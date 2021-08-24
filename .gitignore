@@ -57,6 +57,7 @@ Test/
 .settings/
 Drivers/
 Debug/
+Startup/
 
 ~*
 *.PcbDocPreview

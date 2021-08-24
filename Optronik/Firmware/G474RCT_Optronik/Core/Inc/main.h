@@ -28,7 +28,7 @@ extern "C" {
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include "stm32f1xx_hal.h"
+#include "stm32g4xx_hal.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -50,8 +50,6 @@ extern "C" {
 
 /* USER CODE END EM */
 
-void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
-
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
@@ -60,50 +58,34 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define JSR_TRIG_Pin GPIO_PIN_13
-#define JSR_TRIG_GPIO_Port GPIOC
-#define JSR_B_Pin GPIO_PIN_14
-#define JSR_B_GPIO_Port GPIOC
-#define JSR_A_Pin GPIO_PIN_15
-#define JSR_A_GPIO_Port GPIOC
-#define JSR_ELEVATION_Pin GPIO_PIN_0
-#define JSR_ELEVATION_GPIO_Port GPIOA
-#define JSR_AZIMUTH_Pin GPIO_PIN_1
-#define JSR_AZIMUTH_GPIO_Port GPIOA
-#define JSR_DEADMAN_Pin GPIO_PIN_2
-#define JSR_DEADMAN_GPIO_Port GPIOA
-#define JSL_ELEVATION_Pin GPIO_PIN_3
-#define JSL_ELEVATION_GPIO_Port GPIOA
-#define JSL_AZIMUTH_Pin GPIO_PIN_4
-#define JSL_AZIMUTH_GPIO_Port GPIOA
-#define VBAT_SCALED_Pin GPIO_PIN_5
-#define VBAT_SCALED_GPIO_Port GPIOA
-#define DATA_OUT_Pin GPIO_PIN_6
-#define DATA_OUT_GPIO_Port GPIOA
-#define DATA_IN_Pin GPIO_PIN_7
-#define DATA_IN_GPIO_Port GPIOA
-#define LATCH_Pin GPIO_PIN_0
-#define LATCH_GPIO_Port GPIOB
-#define CLK_Pin GPIO_PIN_1
-#define CLK_GPIO_Port GPIOB
-#define VCP_TXD_Pin GPIO_PIN_10
-#define VCP_TXD_GPIO_Port GPIOB
-#define VCP_RXD_Pin GPIO_PIN_11
-#define VCP_RXD_GPIO_Port GPIOB
-#define LED_BUILTIN_Pin GPIO_PIN_8
-#define LED_BUILTIN_GPIO_Port GPIOA
-#define JSL_TRIG_Pin GPIO_PIN_15
-#define JSL_TRIG_GPIO_Port GPIOA
-#define JSL_B_Pin GPIO_PIN_3
-#define JSL_B_GPIO_Port GPIOB
-#define JSL_A_Pin GPIO_PIN_4
-#define JSL_A_GPIO_Port GPIOB
-#define JSL_DEADMAN_Pin GPIO_PIN_5
-#define JSL_DEADMAN_GPIO_Port GPIOB
-#define BUTTON_TXD_Pin GPIO_PIN_6
-#define BUTTON_TXD_GPIO_Port GPIOB
-#define BUTTON_RXD_Pin GPIO_PIN_7
-#define BUTTON_RXD_GPIO_Port GPIOB
+#define LRF_TXD_Pin GPIO_PIN_0
+#define LRF_TXD_GPIO_Port GPIOC
+#define LRF_RXD_Pin GPIO_PIN_1
+#define LRF_RXD_GPIO_Port GPIOC
+#define LRF_ENABLE_Pin GPIO_PIN_2
+#define LRF_ENABLE_GPIO_Port GPIOC
+#define SONY_RXD_Pin GPIO_PIN_10
+#define SONY_RXD_GPIO_Port GPIOB
+#define SONY_TXD_Pin GPIO_PIN_11
+#define SONY_TXD_GPIO_Port GPIOB
+#define THERMAL_ENABLE_Pin GPIO_PIN_12
+#define THERMAL_ENABLE_GPIO_Port GPIOB
+#define LED_BUILTIN_Pin GPIO_PIN_14
+#define LED_BUILTIN_GPIO_Port GPIOB
+#define VCP_TX_Pin GPIO_PIN_9
+#define VCP_TX_GPIO_Port GPIOA
+#define VCP_RX_Pin GPIO_PIN_10
+#define VCP_RX_GPIO_Port GPIOA
+#define IMU_RXD_Pin GPIO_PIN_10
+#define IMU_RXD_GPIO_Port GPIOC
+#define IMU_TXD_Pin GPIO_PIN_11
+#define IMU_TXD_GPIO_Port GPIOC
+#define THERMAL_RXD_Pin GPIO_PIN_12
+#define THERMAL_RXD_GPIO_Port GPIOC
+#define THERMAL_TXD_Pin GPIO_PIN_2
+#define THERMAL_TXD_GPIO_Port GPIOD
+#define BOOT0_Pin GPIO_PIN_8
+#define BOOT0_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

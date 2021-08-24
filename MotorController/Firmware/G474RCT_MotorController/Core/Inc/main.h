@@ -28,7 +28,7 @@ extern "C" {
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include "stm32f1xx_hal.h"
+#include "stm32g4xx_hal.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -60,50 +60,28 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define JSR_TRIG_Pin GPIO_PIN_13
-#define JSR_TRIG_GPIO_Port GPIOC
-#define JSR_B_Pin GPIO_PIN_14
-#define JSR_B_GPIO_Port GPIOC
-#define JSR_A_Pin GPIO_PIN_15
-#define JSR_A_GPIO_Port GPIOC
-#define JSR_ELEVATION_Pin GPIO_PIN_0
-#define JSR_ELEVATION_GPIO_Port GPIOA
-#define JSR_AZIMUTH_Pin GPIO_PIN_1
-#define JSR_AZIMUTH_GPIO_Port GPIOA
-#define JSR_DEADMAN_Pin GPIO_PIN_2
-#define JSR_DEADMAN_GPIO_Port GPIOA
-#define JSL_ELEVATION_Pin GPIO_PIN_3
-#define JSL_ELEVATION_GPIO_Port GPIOA
-#define JSL_AZIMUTH_Pin GPIO_PIN_4
-#define JSL_AZIMUTH_GPIO_Port GPIOA
-#define VBAT_SCALED_Pin GPIO_PIN_5
-#define VBAT_SCALED_GPIO_Port GPIOA
-#define DATA_OUT_Pin GPIO_PIN_6
-#define DATA_OUT_GPIO_Port GPIOA
-#define DATA_IN_Pin GPIO_PIN_7
-#define DATA_IN_GPIO_Port GPIOA
-#define LATCH_Pin GPIO_PIN_0
-#define LATCH_GPIO_Port GPIOB
-#define CLK_Pin GPIO_PIN_1
-#define CLK_GPIO_Port GPIOB
-#define VCP_TXD_Pin GPIO_PIN_10
-#define VCP_TXD_GPIO_Port GPIOB
-#define VCP_RXD_Pin GPIO_PIN_11
-#define VCP_RXD_GPIO_Port GPIOB
-#define LED_BUILTIN_Pin GPIO_PIN_8
-#define LED_BUILTIN_GPIO_Port GPIOA
-#define JSL_TRIG_Pin GPIO_PIN_15
-#define JSL_TRIG_GPIO_Port GPIOA
-#define JSL_B_Pin GPIO_PIN_3
-#define JSL_B_GPIO_Port GPIOB
-#define JSL_A_Pin GPIO_PIN_4
-#define JSL_A_GPIO_Port GPIOB
-#define JSL_DEADMAN_Pin GPIO_PIN_5
-#define JSL_DEADMAN_GPIO_Port GPIOB
-#define BUTTON_TXD_Pin GPIO_PIN_6
-#define BUTTON_TXD_GPIO_Port GPIOB
-#define BUTTON_RXD_Pin GPIO_PIN_7
-#define BUTTON_RXD_GPIO_Port GPIOB
+#define COUNTER_PULSE_Pin GPIO_PIN_14
+#define COUNTER_PULSE_GPIO_Port GPIOB
+#define COCK_EN_Pin GPIO_PIN_15
+#define COCK_EN_GPIO_Port GPIOB
+#define COCT_ERECT_Pin GPIO_PIN_6
+#define COCT_ERECT_GPIO_Port GPIOC
+#define COCK_RETRACT_Pin GPIO_PIN_7
+#define COCK_RETRACT_GPIO_Port GPIOC
+#define LIM_EL_DOWN_Pin GPIO_PIN_8
+#define LIM_EL_DOWN_GPIO_Port GPIOC
+#define LIM_EL_UP_Pin GPIO_PIN_9
+#define LIM_EL_UP_GPIO_Port GPIOC
+#define TRIGGER_ENABLE_Pin GPIO_PIN_8
+#define TRIGGER_ENABLE_GPIO_Port GPIOA
+#define VCP_TX_Pin GPIO_PIN_9
+#define VCP_TX_GPIO_Port GPIOA
+#define VCP_TXA10_Pin GPIO_PIN_10
+#define VCP_TXA10_GPIO_Port GPIOA
+#define LED_BUILTIN_Pin GPIO_PIN_2
+#define LED_BUILTIN_GPIO_Port GPIOD
+#define LIM_AZ_ZERO_Pin GPIO_PIN_3
+#define LIM_AZ_ZERO_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */
