@@ -58,24 +58,22 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define CAMERA_SELECT_Pin GPIO_PIN_13
+#define CAMERA_SELECT_GPIO_Port GPIOC
 #define LRF_TXD_Pin GPIO_PIN_0
 #define LRF_TXD_GPIO_Port GPIOC
 #define LRF_RXD_Pin GPIO_PIN_1
 #define LRF_RXD_GPIO_Port GPIOC
 #define LRF_ENABLE_Pin GPIO_PIN_2
 #define LRF_ENABLE_GPIO_Port GPIOC
-#define SONY_RXD_Pin GPIO_PIN_10
-#define SONY_RXD_GPIO_Port GPIOB
-#define SONY_TXD_Pin GPIO_PIN_11
-#define SONY_TXD_GPIO_Port GPIOB
-#define THERMAL_ENABLE_Pin GPIO_PIN_12
-#define THERMAL_ENABLE_GPIO_Port GPIOB
 #define LED_BUILTIN_Pin GPIO_PIN_14
 #define LED_BUILTIN_GPIO_Port GPIOB
 #define VCP_TX_Pin GPIO_PIN_9
 #define VCP_TX_GPIO_Port GPIOA
 #define VCP_RX_Pin GPIO_PIN_10
 #define VCP_RX_GPIO_Port GPIOA
+#define THERMAL_ENABLE_Pin GPIO_PIN_15
+#define THERMAL_ENABLE_GPIO_Port GPIOA
 #define IMU_RXD_Pin GPIO_PIN_10
 #define IMU_RXD_GPIO_Port GPIOC
 #define IMU_TXD_Pin GPIO_PIN_11
@@ -84,8 +82,12 @@ void Error_Handler(void);
 #define THERMAL_RXD_GPIO_Port GPIOC
 #define THERMAL_TXD_Pin GPIO_PIN_2
 #define THERMAL_TXD_GPIO_Port GPIOD
-#define BOOT0_Pin GPIO_PIN_8
-#define BOOT0_GPIO_Port GPIOB
+#define SONY_RXD_Pin GPIO_PIN_3
+#define SONY_RXD_GPIO_Port GPIOB
+#define SONY_TXD_Pin GPIO_PIN_4
+#define SONY_TXD_GPIO_Port GPIOB
+#define Boot0_Pin GPIO_PIN_8
+#define Boot0_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

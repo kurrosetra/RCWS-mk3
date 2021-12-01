@@ -19,12 +19,18 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "adc.h"
+#include "fdcan.h"
+#include "usart.h"
+#include "tim.h"
+#include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include <string.h>
 
-#include "stm_hal_serial.h"
+#include "bus_fdcan.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -34,6 +40,27 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define MTR_AZ_ENABLE			0
+#define MTR_EL_ENABLE			1
+
+#define MTR_AZ_SPEED_1			50
+#define MTR_AZ_SPEED_2			200
+#define MTR_AZ_SPEED_3			RWS_MOTOR_PAN_MAX_SPEED
+
+#define MTR_EL_SPEED_1			100
+#define MTR_EL_SPEED_2			10000
+#define MTR_EL_SPEED_3			RWS_MOTOR_TILT_MAX_SPEED
+
+typedef struct
+{
+	uint8_t motorStatus;
+	uint8_t weaponStatus;
+	uint16_t munitionCounter;
+	int32_t panPosition;
+	int32_t tiltPosition;
+	int32_t panVelocity;
+	int32_t tiltVelocity;
+} Motor_Weapon_Status_t;
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -42,38 +69,32 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-FDCAN_HandleTypeDef hfdcan1;
-
-UART_HandleTypeDef hlpuart1;
-UART_HandleTypeDef huart4;
-UART_HandleTypeDef huart1;
-
-QSPI_HandleTypeDef hqspi1;
-
-TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
-uint8_t rxDBuffer[RING_BUFFER_RX_SIZE];
-uint8_t txDBuffer[RING_BUFFER_TX_SIZE];
-TSerial debug;
+/* TODO Global Variables*/
 
-uint8_t rxPcBuffer[RING_BUFFER_RX_SIZE];
-uint8_t txPcBuffer[RING_BUFFER_TX_SIZE];
-TSerial pc;
+volatile uint8_t debugButton = 0;
 
+uint16_t pvdLen;
+char pvdBuf[64];
+
+Bus_Tx_Buffer_t busSendPanel;
+Bus_Rx_Buffer_t busRecvMotor;
+Bus_Rx_Buffer_t busRecvOptronik;
+Bus_Rx_Buffer_t busRecvImu;
+
+Motor_Weapon_Status_t g_motor_weapon_status;
+volatile uint8_t g_fdcan_bus_busOff_error = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_FDCAN1_Init(void);
-static void MX_QUADSPI1_Init(void);
-static void MX_USART1_UART_Init(void);
-static void MX_TIM2_Init(void);
-static void MX_UART4_Init(void);
-static void MX_LPUART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void tim4_out_off(const uint32_t ch);
+static void tim4_out_on(const uint32_t ch);
+static void tim4_out_toggle(const uint32_t ch);
+static void PVD_Config(void);
+static void busInit(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -82,527 +103,451 @@ static void MX_LPUART1_UART_Init(void);
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
-  * @retval int
-  */
+ * @brief  The application entry point.
+ * @retval int
+ */
 int main(void)
 {
-  /* USER CODE BEGIN 1 */
+	/* USER CODE BEGIN 1 */
 	char buf[RING_BUFFER_TX_SIZE];
 	uint16_t bufLen;
-  /* USER CODE END 1 */
+	pvdLen = sprintf(pvdBuf, "off!\r\n");
+	/* USER CODE END 1 */
 
-  /* MCU Configuration--------------------------------------------------------*/
+	/* MCU Configuration--------------------------------------------------------*/
 
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+	HAL_Init();
 
-  /* USER CODE BEGIN Init */
+	/* USER CODE BEGIN Init */
 
-  /* USER CODE END Init */
+	/* USER CODE END Init */
 
-  /* Configure the system clock */
-  SystemClock_Config();
+	/* Configure the system clock */
+	SystemClock_Config();
 
-  /* USER CODE BEGIN SysInit */
+	/* USER CODE BEGIN SysInit */
 
-  /* USER CODE END SysInit */
+	/* USER CODE END SysInit */
 
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_FDCAN1_Init();
-  MX_QUADSPI1_Init();
-  MX_USART1_UART_Init();
-  MX_TIM2_Init();
-  MX_UART4_Init();
-  MX_LPUART1_UART_Init();
-  /* USER CODE BEGIN 2 */
-	serial_init(&debug, (char*) &rxDBuffer, sizeof(rxDBuffer), (char*) &txDBuffer,
-			sizeof(txDBuffer), &huart1);
+	/* Initialize all configured peripherals */
+	MX_GPIO_Init();
+	MX_USART1_UART_Init();
+	MX_LPUART1_UART_Init();
+	MX_ADC2_Init();
+	MX_FDCAN1_Init();
+	MX_TIM4_Init();
+	MX_USART2_UART_Init();
+	/* USER CODE BEGIN 2 */
+	/* TODO Begin Init*/
 
+	uartInitAll();
 	bufLen = sprintf(buf, "Main Panel Firmware!\r\n");
 	serial_write_str(&debug, buf, bufLen);
-
-	serial_init(&pc, (char*) &rxPcBuffer, sizeof(rxPcBuffer), (char*) &txPcBuffer,
-			sizeof(txPcBuffer), &hlpuart1);
 
 	bufLen = sprintf(buf, "to PC!\r\n");
 	serial_write_str(&pc, buf, bufLen);
 
-  /* USER CODE END 2 */
+	HAL_TIM_PWM_Start(&htim4, LED_CH);
+	HAL_TIM_PWM_Start(&htim4, TRIG_CH);
+	tim4_out_on(LED_CH);
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-	uint32_t ledTimer = 0;
+	busInit();
+
+//	PVD_Config();
+	/* USER CODE END 2 */
+
+	/* Infinite loop */
+	/* USER CODE BEGIN WHILE */
+	uint32_t panelSendTimer = 0;
+	uint8_t motorDirection = 0;
+
+	uint8_t motor_counter = 0;
+	uint8_t motor_debug_on = 0;
+	uint32_t motor_debug_timer = 0;
 	while (1) {
-    /* USER CODE END WHILE */
+		char c;
+		Rws_Union_u _val;
+		Rws_Union_u mtr[4];
+		/* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
-		if (HAL_GetTick() >= ledTimer) {
-			ledTimer = HAL_GetTick() + 500;
+		/* USER CODE BEGIN 3 */
+		/* TODO BEGIN LOOP*/
+		if (g_fdcan_bus_busOff_error != 0) {
+			MX_FDCAN1_Init();
+			busInit();
 
-			HAL_GPIO_TogglePin(LED_BUILTIN_GPIO_Port, LED_BUILTIN_Pin);
-			bufLen = sprintf(buf, "led= %d\r\n",
-					HAL_GPIO_ReadPin(LED_BUILTIN_GPIO_Port, LED_BUILTIN_Pin));
-			serial_write_str(&debug, buf, bufLen);
-			serial_write_str(&pc, buf, bufLen);
+			g_fdcan_bus_busOff_error = 0;
 		}
+
+		if (motor_counter != busRecvMotor.counter) {
+			motor_counter = busRecvMotor.counter;
+
+			g_motor_weapon_status.motorStatus = busRecvMotor.data[0];
+			g_motor_weapon_status.weaponStatus = busRecvMotor.data[1];
+			g_motor_weapon_status.munitionCounter = ((uint16_t) busRecvMotor.data[3] << 8)
+					| busRecvMotor.data[2];
+			for ( int _i = 0; _i < 4; _i++ ) {
+				mtr[0].u8[_i] = busRecvMotor.data[4 + _i];
+				mtr[1].u8[_i] = busRecvMotor.data[8 + _i];
+				mtr[2].u8[_i] = busRecvMotor.data[12 + _i];
+				mtr[3].u8[_i] = busRecvMotor.data[16 + _i];
+			}
+			g_motor_weapon_status.panPosition = mtr[0].i32;
+			g_motor_weapon_status.tiltPosition = mtr[1].i32;
+			g_motor_weapon_status.panVelocity = mtr[2].i32;
+			g_motor_weapon_status.tiltVelocity = mtr[3].i32;
+
+			tim4_out_toggle(LED_CH);
+		}
+
+		if (motor_debug_on != 0) {
+			if (HAL_GetTick() >= motor_debug_timer) {
+				motor_debug_timer = HAL_GetTick() + 500;
+
+				bufLen = sprintf(buf, "(MTR)P:V= %ld %ld\r\n", g_motor_weapon_status.tiltPosition,
+						g_motor_weapon_status.tiltVelocity);
+				serial_write_str(&debug, buf, bufLen);
+			}
+		}
+
+		if (debugButton == 1) {
+			debugButton = 0;
+		}
+
+#if MTR_AZ_ENABLE==1
+		if (serial_available(&debug) > 0) {
+			c = serial_read(&debug);
+
+			if (c == 'e') {
+				if (!bitRead(busRecvMotor.data[0], 0)) {
+					bufLen = sprintf(buf, "Start to enable pan motor!\r\n");
+					bitSet(busSendPanel.data[0], 0);
+				}
+				else {
+					bufLen = sprintf(buf, "Start to disable pan motor!\r\n");
+					bitClear(busSendPanel.data[0], 0);
+				}
+				serial_write_str(&debug, buf, bufLen);
+			}
+			else if (c == '0') {
+				_val.i32 = 0;
+				for ( int i = 0; i < 4; i++ )
+					busSendPanel.data[i + 4] = _val.u8[i];
+			}
+			else if (c == '1') {
+				if (motorDirection == 0)
+					_val.i32 = MTR_AZ_SPEED_1;
+				else
+					_val.i32 = -MTR_AZ_SPEED_1;
+				for ( int i = 0; i < 4; i++ )
+					busSendPanel.data[i + 4] = _val.u8[i];
+			}
+			else if (c == '2') {
+				if (motorDirection == 0)
+					_val.i32 = MTR_AZ_SPEED_2;
+				else
+					_val.i32 = -MTR_AZ_SPEED_2;
+				for ( int i = 0; i < 4; i++ )
+					busSendPanel.data[i + 4] = _val.u8[i];
+			}
+			else if (c == '3') {
+				if (motorDirection == 0)
+					_val.i32 = MTR_AZ_SPEED_3;
+				else
+					_val.i32 = -MTR_AZ_SPEED_3;
+				for ( int i = 0; i < 4; i++ )
+					busSendPanel.data[i + 4] = _val.u8[i];
+			}
+			else if (c == 'R')
+				motorDirection = 0;
+			else if (c == 'L')
+				motorDirection = 1;
+		}
+#elif MTR_EL_ENABLE==1
+		if (serial_available(&debug) > 0) {
+			c = serial_read(&debug);
+
+			if (c == 'e') {
+				if (!bitRead(g_motor_weapon_status.motorStatus, 1)) {
+					bufLen = sprintf(buf, "Start to enable tilt motor!\r\n");
+					bitSet(busSendPanel.data[0], 1);
+				}
+				else {
+					bufLen = sprintf(buf, "Start to disable tilt motor!\r\n");
+					bitClear(busSendPanel.data[0], 1);
+				}
+				serial_write_str(&debug, buf, bufLen);
+			}
+			else if (c == 'D') {
+				if (motor_debug_on == 0)
+					motor_debug_on = 1;
+				else
+					motor_debug_on = 0;
+			}
+			else if (c == '0') {
+				_val.i32 = 0;
+				for ( int i = 0; i < 4; i++ )
+					busSendPanel.data[i + 8] = _val.u8[i];
+				bufLen = sprintf(buf, "mtr Tilt Stop!\r\n");
+				serial_write_str(&debug, buf, bufLen);
+			}
+			else if (c == '1') {
+				if (motorDirection == 0)
+					_val.i32 = MTR_EL_SPEED_1;
+				else
+					_val.i32 = -MTR_EL_SPEED_1;
+				for ( int i = 0; i < 4; i++ )
+					busSendPanel.data[i + 8] = _val.u8[i];
+
+				bufLen = sprintf(buf, "tiltSpeed= %ld!\r\n", _val.i32);
+				serial_write_str(&debug, buf, bufLen);
+			}
+			else if (c == '2') {
+				if (motorDirection == 0)
+					_val.i32 = MTR_EL_SPEED_2;
+				else
+					_val.i32 = -MTR_EL_SPEED_2;
+				for ( int i = 0; i < 4; i++ )
+					busSendPanel.data[i + 8] = _val.u8[i];
+
+				bufLen = sprintf(buf, "tiltSpeed= %ld!\r\n", _val.i32);
+				serial_write_str(&debug, buf, bufLen);
+			}
+			else if (c == '3') {
+				if (motorDirection == 0)
+					_val.i32 = MTR_EL_SPEED_3;
+				else
+					_val.i32 = -MTR_EL_SPEED_3;
+				for ( int i = 0; i < 4; i++ )
+					busSendPanel.data[i + 8] = _val.u8[i];
+
+				bufLen = sprintf(buf, "tiltSpeed= %ld!\r\n", _val.i32);
+				serial_write_str(&debug, buf, bufLen);
+			}
+			else if (c == 'U') {
+				motorDirection = 0;
+
+				bufLen = sprintf(buf, "mtr Tilt Upward movement!\r\n");
+				serial_write_str(&debug, buf, bufLen);
+			}
+			else if (c == 'D') {
+				motorDirection = 1;
+
+				bufLen = sprintf(buf, "mtr Tilt Downward movement!\r\n");
+				serial_write_str(&debug, buf, bufLen);
+			}
+		}
+#endif	//if MTR_AZ_ENABLE==1
+
+		if (HAL_GetTick() >= panelSendTimer) {
+			panelSendTimer = HAL_GetTick() + 50;
+
+			/* Start the Transmission process */
+			HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &busSendPanel.txHeader, busSendPanel.data);
+		}
+
+		/* TODO END LOOP*/
 	}
-  /* USER CODE END 3 */
+	/* USER CODE END 3 */
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
+ * @brief System Clock Configuration
+ * @retval None
+ */
 void SystemClock_Config(void)
 {
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+	RCC_OscInitTypeDef RCC_OscInitStruct = { 0 };
+	RCC_ClkInitTypeDef RCC_ClkInitStruct = { 0 };
+	RCC_PeriphCLKInitTypeDef PeriphClkInit = { 0 };
 
-  /** Configure the main internal regulator output voltage
-  */
-  HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1_BOOST);
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV2;
-  RCC_OscInitStruct.PLL.PLLN = 85;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-  RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV2;
-  RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV2;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+	/** Configure the main internal regulator output voltage
+	 */
+	HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1_BOOST);
+	/** Initializes the RCC Oscillators according to the specified parameters
+	 * in the RCC_OscInitTypeDef structure.
+	 */
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+	RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+	RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV2;
+	RCC_OscInitStruct.PLL.PLLN = 85;
+	RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+	RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV2;
+	RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV2;
+	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+		Error_Handler();
+	}
+	/** Initializes the CPU, AHB and APB buses clocks
+	 */
+	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1
+			| RCC_CLOCKTYPE_PCLK2;
+	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /** Initializes the peripherals clocks
-  */
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_UART4
-                              |RCC_PERIPHCLK_LPUART1|RCC_PERIPHCLK_QSPI
-                              |RCC_PERIPHCLK_FDCAN;
-  PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
-  PeriphClkInit.Uart4ClockSelection = RCC_UART4CLKSOURCE_PCLK1;
-  PeriphClkInit.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_PCLK1;
-  PeriphClkInit.FdcanClockSelection = RCC_FDCANCLKSOURCE_PCLK1;
-  PeriphClkInit.QspiClockSelection = RCC_QSPICLKSOURCE_SYSCLK;
-
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
-  {
-    Error_Handler();
-  }
-}
-
-/**
-  * @brief FDCAN1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_FDCAN1_Init(void)
-{
-
-  /* USER CODE BEGIN FDCAN1_Init 0 */
-
-  /* USER CODE END FDCAN1_Init 0 */
-
-  /* USER CODE BEGIN FDCAN1_Init 1 */
-
-  /* USER CODE END FDCAN1_Init 1 */
-  hfdcan1.Instance = FDCAN1;
-  hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
-  hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
-  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
-  hfdcan1.Init.AutoRetransmission = ENABLE;
-  hfdcan1.Init.TransmitPause = DISABLE;
-  hfdcan1.Init.ProtocolException = DISABLE;
-  hfdcan1.Init.NominalPrescaler = 1;
-  hfdcan1.Init.NominalSyncJumpWidth = 1;
-  hfdcan1.Init.NominalTimeSeg1 = 2;
-  hfdcan1.Init.NominalTimeSeg2 = 2;
-  hfdcan1.Init.DataPrescaler = 1;
-  hfdcan1.Init.DataSyncJumpWidth = 1;
-  hfdcan1.Init.DataTimeSeg1 = 1;
-  hfdcan1.Init.DataTimeSeg2 = 1;
-  hfdcan1.Init.StdFiltersNbr = 0;
-  hfdcan1.Init.ExtFiltersNbr = 0;
-  hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
-  if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN FDCAN1_Init 2 */
-
-  /* USER CODE END FDCAN1_Init 2 */
-
-}
-
-/**
-  * @brief LPUART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_LPUART1_UART_Init(void)
-{
-
-  /* USER CODE BEGIN LPUART1_Init 0 */
-
-  /* USER CODE END LPUART1_Init 0 */
-
-  /* USER CODE BEGIN LPUART1_Init 1 */
-
-  /* USER CODE END LPUART1_Init 1 */
-  hlpuart1.Instance = LPUART1;
-  hlpuart1.Init.BaudRate = 115200;
-  hlpuart1.Init.WordLength = UART_WORDLENGTH_8B;
-  hlpuart1.Init.StopBits = UART_STOPBITS_1;
-  hlpuart1.Init.Parity = UART_PARITY_NONE;
-  hlpuart1.Init.Mode = UART_MODE_TX_RX;
-  hlpuart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  hlpuart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  hlpuart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  hlpuart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&hlpuart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetTxFifoThreshold(&hlpuart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetRxFifoThreshold(&hlpuart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_DisableFifoMode(&hlpuart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN LPUART1_Init 2 */
-
-  /* USER CODE END LPUART1_Init 2 */
-
-}
-
-/**
-  * @brief UART4 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_UART4_Init(void)
-{
-
-  /* USER CODE BEGIN UART4_Init 0 */
-
-  /* USER CODE END UART4_Init 0 */
-
-  /* USER CODE BEGIN UART4_Init 1 */
-
-  /* USER CODE END UART4_Init 1 */
-  huart4.Instance = UART4;
-  huart4.Init.BaudRate = 115200;
-  huart4.Init.WordLength = UART_WORDLENGTH_8B;
-  huart4.Init.StopBits = UART_STOPBITS_1;
-  huart4.Init.Parity = UART_PARITY_NONE;
-  huart4.Init.Mode = UART_MODE_TX_RX;
-  huart4.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart4.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart4.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart4.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart4.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetTxFifoThreshold(&huart4, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart4, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_DisableFifoMode(&huart4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN UART4_Init 2 */
-
-  /* USER CODE END UART4_Init 2 */
-
-}
-
-/**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART1_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART1_Init 0 */
-
-  /* USER CODE END USART1_Init 0 */
-
-  /* USER CODE BEGIN USART1_Init 1 */
-
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_DisableFifoMode(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART1_Init 2 */
-
-  /* USER CODE END USART1_Init 2 */
-
-}
-
-/**
-  * @brief QUADSPI1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_QUADSPI1_Init(void)
-{
-
-  /* USER CODE BEGIN QUADSPI1_Init 0 */
-
-  /* USER CODE END QUADSPI1_Init 0 */
-
-  /* USER CODE BEGIN QUADSPI1_Init 1 */
-
-  /* USER CODE END QUADSPI1_Init 1 */
-  /* QUADSPI1 parameter configuration*/
-  hqspi1.Instance = QUADSPI;
-  hqspi1.Init.ClockPrescaler = 255;
-  hqspi1.Init.FifoThreshold = 1;
-  hqspi1.Init.SampleShifting = QSPI_SAMPLE_SHIFTING_NONE;
-  hqspi1.Init.FlashSize = 1;
-  hqspi1.Init.ChipSelectHighTime = QSPI_CS_HIGH_TIME_1_CYCLE;
-  hqspi1.Init.ClockMode = QSPI_CLOCK_MODE_0;
-  hqspi1.Init.FlashID = QSPI_FLASH_ID_1;
-  hqspi1.Init.DualFlash = QSPI_DUALFLASH_DISABLE;
-  if (HAL_QSPI_Init(&hqspi1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN QUADSPI1_Init 2 */
-
-  /* USER CODE END QUADSPI1_Init 2 */
-
-}
-
-/**
-  * @brief TIM2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM2_Init(void)
-{
-
-  /* USER CODE BEGIN TIM2_Init 0 */
-
-  /* USER CODE END TIM2_Init 0 */
-
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-
-  /* USER CODE BEGIN TIM2_Init 1 */
-
-  /* USER CODE END TIM2_Init 1 */
-  htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 0;
-  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 4.294967295E9;
-  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM2_Init 2 */
-
-  /* USER CODE END TIM2_Init 2 */
-  HAL_TIM_MspPostInit(&htim2);
-
-}
-
-/**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_GPIO_Init(void)
-{
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-  /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOF_CLK_ENABLE();
-  __HAL_RCC_GPIOG_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LED_BUILTIN_GPIO_Port, LED_BUILTIN_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pins : PC13 PC14 PC15 PC1
-                           PC2 PC3 PC4 PC5
-                           PC6 PC7 PC8 PC9
-                           PC12 */
-  GPIO_InitStruct.Pin = GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15|GPIO_PIN_1
-                          |GPIO_PIN_2|GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5
-                          |GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9
-                          |GPIO_PIN_12;
-  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PG10 */
-  GPIO_InitStruct.Pin = GPIO_PIN_10;
-  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : LED_BUILTIN_Pin */
-  GPIO_InitStruct.Pin = LED_BUILTIN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LED_BUILTIN_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PA1 PA4 PA5 PA8 */
-  GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_8;
-  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PB2 PB12 PB13 PB14
-                           PB15 PB3 PB7 PB9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14
-                          |GPIO_PIN_15|GPIO_PIN_3|GPIO_PIN_7|GPIO_PIN_9;
-  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PD2 */
-  GPIO_InitStruct.Pin = GPIO_PIN_2;
-  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : JSR_TRIG_Pin */
-  GPIO_InitStruct.Pin = JSR_TRIG_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(JSR_TRIG_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : OTHER_CAN_RX_Pin OTHER_CAN_TX_Pin */
-  GPIO_InitStruct.Pin = OTHER_CAN_RX_Pin|OTHER_CAN_TX_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF9_FDCAN2;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : BOOT0_Pin */
-  GPIO_InitStruct.Pin = BOOT0_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(BOOT0_GPIO_Port, &GPIO_InitStruct);
-
+	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4) != HAL_OK) {
+		Error_Handler();
+	}
+	/** Initializes the peripherals clocks
+	 */
+	PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1 | RCC_PERIPHCLK_USART2
+			| RCC_PERIPHCLK_LPUART1 | RCC_PERIPHCLK_ADC12 | RCC_PERIPHCLK_FDCAN;
+	PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
+	PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
+	PeriphClkInit.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_PCLK1;
+	PeriphClkInit.FdcanClockSelection = RCC_FDCANCLKSOURCE_PCLK1;
+	PeriphClkInit.Adc12ClockSelection = RCC_ADC12CLKSOURCE_SYSCLK;
+	if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
+		Error_Handler();
+	}
+	/** Enables the Clock Security System
+	 */
+	HAL_RCC_EnableCSS();
 }
 
 /* USER CODE BEGIN 4 */
 /* TODO USER FUNCTIONS*/
-void LPUART1_IRQHandler(void)
+static void busInit(void)
 {
-	USARTx_IRQHandler(&pc);
+	char buf[RING_BUFFER_TX_SIZE];
+	uint16_t bufLen;
+
+	bufLen = sprintf(buf, "fdcan bus init ...\r\n");
+	serial_write_str(&debug, buf, bufLen);
+
+	FDCAN_RX_Filter_Motor(&hfdcan1, 0);
+	busRecvMotor.id = RWS_MOTOR_ID;
+	FDCAN_RX_Filter_Optronik(&hfdcan1, 1);
+	busRecvOptronik.id = RWS_OPTRONIK_ID;
+	FDCAN_RX_Filter_Imu(&hfdcan1, 2);
+	busRecvImu.id = RWS_IMU_ID;
+	FDCAN_TX_Config(&busSendPanel.txHeader, RWS_PANEL_ID, RWS_PANEL_DATA_LENGTH);
+	FDCAN_Config(&hfdcan1);
+
+	bufLen = sprintf(buf, "done!\r\n");
+	serial_write_str(&debug, buf, bufLen);
 }
 
-void USART1_IRQHandler(void)
+void Bus_Notification_Callback(FDCAN_RxHeaderTypeDef *rxHeader, uint8_t *data)
 {
-	USARTx_IRQHandler(&debug);
+	if (rxHeader->IdType == FDCAN_STANDARD_ID) {
+		if (rxHeader->Identifier == RWS_MOTOR_ID) {
+			busRecvMotor.lastTimestamp = HAL_GetTick();
+			busRecvMotor.rxHeader = *rxHeader;
+			memcpy(busRecvMotor.data, data, FDCAN_Convert_Datalength(rxHeader->DataLength));
+			busRecvMotor.counter++;
+		}
+		else if (rxHeader->Identifier == RWS_OPTRONIK_ID) {
+			busRecvOptronik.lastTimestamp = HAL_GetTick();
+			busRecvOptronik.rxHeader = *rxHeader;
+			memcpy(busRecvOptronik.data, data, FDCAN_Convert_Datalength(rxHeader->DataLength));
+			busRecvOptronik.counter++;
+		}
+		else if (rxHeader->Identifier == RWS_IMU_ID) {
+			busRecvImu.lastTimestamp = HAL_GetTick();
+			busRecvImu.rxHeader = *rxHeader;
+			memcpy(busRecvImu.data, data, FDCAN_Convert_Datalength(rxHeader->DataLength));
+			busRecvImu.counter++;
+		}
+	}
 }
 
+void PanelDebugButton_CallBack(uint16_t GPIO_Pin)
+{
+	/* Prevent unused argument(s) compilation warning */
+	UNUSED(GPIO_Pin);
+
+	/* NOTE: This function should not be modified, when the callback is needed,
+	 the HAL_GPIO_EXTI_Callback could be implemented in the user file
+	 */
+
+	debugButton = 1;
+}
+
+static void tim4_out_on(const uint32_t ch)
+{
+	__HAL_TIM_SET_COMPARE(&htim4, ch, TIM4_ON);
+}
+
+static void tim4_out_off(const uint32_t ch)
+{
+	__HAL_TIM_SET_COMPARE(&htim4, ch, TIM4_OFF);
+}
+
+static void tim4_out_toggle(const uint32_t ch)
+{
+	uint32_t tmp = __HAL_TIM_GET_COMPARE(&htim4, ch);
+	if (tmp != TIM4_OFF)
+		tmp = TIM4_OFF;
+	else
+		tmp = TIM4_ON;
+	__HAL_TIM_SET_COMPARE(&htim4, ch, tmp);
+}
+
+void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t ErrorStatusITs)
+{
+	g_fdcan_bus_busOff_error = 1;
+}
+
+/**
+ * @brief  Configures the PVD resources.
+ * @param  None
+ * @retval None
+ */
+static void PVD_Config(void)
+{
+	PWR_PVDTypeDef sConfigPVD;
+
+	/*##-1- Enable Power Clock #################################################*/
+	/* Enable Power Clock */
+	__HAL_RCC_PWR_CLK_ENABLE();
+
+	/*##-2- Configure the NVIC for PVD #########################################*/
+	HAL_NVIC_SetPriority(PVD_PVM_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(PVD_PVM_IRQn);
+
+	/* Configure the PVD Level to 3 and generate an interrupt on rising and falling
+	 edges(PVD detection level set to 2.5V, refer to the electrical characteristics
+	 of you device datasheet for more details) */
+	sConfigPVD.PVDLevel = PWR_PVDLEVEL_6;
+	sConfigPVD.Mode = PWR_PVD_MODE_IT_RISING_FALLING;
+	HAL_PWR_ConfigPVD(&sConfigPVD);
+
+	/* Enable the PVD Output */
+	HAL_PWR_EnablePVD();
+}
+
+/**
+ * @brief  PWR PVD interrupt callback
+ * @param  none
+ * @retval none
+ */
+void HAL_PWR_PVDCallback(void)
+{
+	serial_write_str(&pc, pvdBuf, pvdLen);
+	tim4_out_on(LED_CH);
+}
+
+/* TODO end user function*/
 /* USER CODE END 4 */
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
+ * @brief  This function is executed in case of error occurrence.
+ * @retval None
+ */
 void Error_Handler(void)
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
+	/* USER CODE BEGIN Error_Handler_Debug */
 	/* User can add his own implementation to report the HAL error return state */
+	HAL_GPIO_WritePin(LED_BUILTIN_GPIO_Port, LED_BUILTIN_Pin, GPIO_PIN_SET);
 	__disable_irq();
 	while (1) {
 	}
-  /* USER CODE END Error_Handler_Debug */
+	/* USER CODE END Error_Handler_Debug */
 }
 
 #ifdef  USE_FULL_ASSERT

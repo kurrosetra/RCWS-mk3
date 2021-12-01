@@ -31,6 +31,16 @@
 	</natures>
 	<linkedResources>
 		<link>
+			<name>bus_fdcan</name>
+			<type>2</type>
+			<location>D:/Cloud/Dropbox/github/RCWS-mk3/share_lib/bus_fdcan</location>
+		</link>
+		<link>
+			<name>config</name>
+			<type>2</type>
+			<location>D:/Cloud/Dropbox/github/RCWS-mk3/share_lib/config</location>
+		</link>
+		<link>
 			<name>uart</name>
 			<type>2</type>
 			<location>D:/Cloud/Dropbox/github/RCWS-mk3/share_lib/uart</location>

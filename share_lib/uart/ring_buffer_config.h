@@ -16,7 +16,7 @@
 
  //irq handler
  void UART4_IRQHandler(void)
- void USART2_IRQHandler(void)
+ void USART1_IRQHandler(void)
  void LPUART1_IRQHandler(void)
  {
  uint8_t ret = USARTx_IRQHandler(&debug);

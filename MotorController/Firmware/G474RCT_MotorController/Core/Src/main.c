@@ -19,21 +19,70 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "fdcan.h"
+#include "iwdg.h"
+#include "tim.h"
+#include "usart.h"
+#include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include <string.h>
+//#include <math.h>
+#include <stdlib.h>
+#include <stdbool.h>
 
-#include "stm_hal_serial.h"
+#include "Ingenia_FdcanServoDriver.h"
+#include "rws_config.h"
+#include "bus_fdcan.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef enum
+{
+	MOVEMENT_MANUAL,
+	MOVEMENT_STABILIZE,
+	MOVEMENT_TRACK
+} movement_mode_e;
 
+typedef struct
+{
+	uint8_t movementMode;
+	uint8_t weaponCommand;
+	int32_t panSpeedDesired;
+	int32_t tiltSpeedDesired;
+	int32_t panSpeedCorrection;
+	int32_t tiltSpeedCorrection;
+	uint32_t timestamp;
+} panel_command_t;
+
+typedef struct
+{
+	uint8_t motorStatus;
+	uint8_t weaponStatus;
+	uint16_t munitionCounter;
+} motor_weapon_status_t;
+
+typedef struct
+{
+	Servo_t *servo;
+	uint32_t maxVelo;
+	uint32_t pos1Rev;
+} servo_under_test_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define PANEL_NOT_CONNECTED		1
+
+#define MTR_AZ_ENABLE			0
+#define MTR_EL_ENABLE			1
+
+#define MTR_AZ_ID				0x20
+#define MTR_EL_ID				0x21
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -42,36 +91,34 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-FDCAN_HandleTypeDef hfdcan1;
-FDCAN_HandleTypeDef hfdcan2;
-
-QSPI_HandleTypeDef hqspi1;
-
-TIM_HandleTypeDef htim3;
-TIM_HandleTypeDef htim4;
-TIM_HandleTypeDef htim8;
-
-UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-uint8_t rxDBuffer[RING_BUFFER_RX_SIZE];
-uint8_t txDBuffer[RING_BUFFER_TX_SIZE];
-TSerial debug;
+Servo_t mtrAzi;
+Servo_t mtrEle;
+volatile uint32_t countTPDO4 = 0;
+
+Bus_Tx_Buffer_t busSendMotor;
+Bus_Rx_Buffer_t busRecvPanel;
+
+panel_command_t g_panel_command;
+motor_weapon_status_t g_motor_weapon_status;
+
+volatile uint8_t g_fdcan_bus_busOff_error = 0;
+volatile uint8_t g_fdcan_motor_busOff_error = 0;
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_USART1_UART_Init(void);
-static void MX_FDCAN1_Init(void);
-static void MX_FDCAN2_Init(void);
-static void MX_QUADSPI1_Init(void);
-static void MX_TIM3_Init(void);
-static void MX_TIM4_Init(void);
-static void MX_TIM8_Init(void);
 /* USER CODE BEGIN PFP */
+static void busInit(void);
+static void busHandler(void);
 
+static void weaponInit();
+static void weaponHandler();
+
+static HAL_StatusTypeDef motorInit();
+static void motorHandler();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -86,8 +133,7 @@ static void MX_TIM8_Init(void);
 int main(void)
 {
 	/* USER CODE BEGIN 1 */
-	char buf[RING_BUFFER_TX_SIZE];
-	uint16_t bufLen;
+
 	/* USER CODE END 1 */
 
 	/* MCU Configuration--------------------------------------------------------*/
@@ -103,7 +149,8 @@ int main(void)
 	SystemClock_Config();
 
 	/* USER CODE BEGIN SysInit */
-
+	char buf[RING_BUFFER_TX_SIZE];
+	uint16_t bufLen;
 	/* USER CODE END SysInit */
 
 	/* Initialize all configured peripherals */
@@ -111,32 +158,180 @@ int main(void)
 	MX_USART1_UART_Init();
 	MX_FDCAN1_Init();
 	MX_FDCAN2_Init();
-	MX_QUADSPI1_Init();
-	MX_TIM3_Init();
-	MX_TIM4_Init();
 	MX_TIM8_Init();
+//	MX_IWDG_Init();
 	/* USER CODE BEGIN 2 */
-	serial_init(&debug, (char*) &rxDBuffer, sizeof(rxDBuffer), (char*) &txDBuffer,
-			sizeof(txDBuffer), &huart1);
-	bufLen = sprintf(buf, "MotorControl Firmware!\r\n");
+	/* TODO Init*/
+	usartAllInit();
+	bufLen = sprintf(buf, "motorControl RWS-mk3 firmware!\r\n");
 	serial_write_str(&debug, buf, bufLen);
+
+	HAL_GPIO_WritePin(LED_BUILTIN_GPIO_Port, LED_BUILTIN_Pin, GPIO_PIN_SET);
+
+	busInit();
+
+//	HAL_IWDG_Refresh(&hiwdg);
+	if (motorInit() != HAL_OK)
+		Error_Handler();
+
+	servo_under_test_t test;
+#if MTR_AZ_ENABLE==1
+	test.servo = &mtrAzi;
+	test.maxVelo = 350UL;
+	test.pos1Rev = 18UL;
+#endif	//if MTR_AZ_ENABLE==1
+
+#if MTR_EL_ENABLE==1
+	test.servo = &mtrEle;
+	test.maxVelo = 100000UL;
+	test.pos1Rev = 4000UL;
+#endif	//if MTR_EL_ENABLE==1
+
+	bufLen = sprintf(buf, "mtrEle._u8Node= 0x%02X\r\n", test.servo->_u8Node);
+	serial_write_str(&debug, buf, bufLen);
+
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
-	uint32_t ledTimer = 0;
+	uint8_t _debugMotorEnable = 0;
+#if PANEL_NOT_CONNECTED==1
+	uint32_t panelCommandTimer = 0;
+#endif	//if PANEL_NOT_CONNECTED==1
+
 	while (1) {
+		uint32_t _debugPos = 0;
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
-		if (HAL_GetTick() >= ledTimer) {
-			ledTimer = HAL_GetTick() + 500;
-
-			HAL_GPIO_TogglePin(LED_BUILTIN_GPIO_Port, LED_BUILTIN_Pin);
-			bufLen = sprintf(buf, "led= %d\r\n",
-					HAL_GPIO_ReadPin(LED_BUILTIN_GPIO_Port, LED_BUILTIN_Pin));
-			serial_write_str(&debug, buf, bufLen);
+		/* TODO BEGIN LOOP*/
+//		HAL_IWDG_Refresh(&hiwdg);
+#if PANEL_NOT_CONNECTED==0
+		if (g_fdcan_bus_busOff_error == 1) {
+			MX_FDCAN1_Init();
+			busInit();
+			g_fdcan_bus_busOff_error = 0;
 		}
+#endif	//if PANEL_NOT_CONNECTED==0
+
+		if (g_fdcan_motor_busOff_error == 1) {
+			MX_FDCAN2_Init();
+			if (motorInit() != HAL_OK)
+				Error_Handler();
+
+			g_fdcan_motor_busOff_error = 0;
+		}
+
+#if PANEL_NOT_CONNECTED==0
+		busHandler();
+#else
+		if (HAL_GetTick() >= panelCommandTimer) {
+			panelCommandTimer = HAL_GetTick() + 50;
+
+			g_panel_command.timestamp = HAL_GetTick();
+			HAL_GPIO_TogglePin(LED_BUILTIN_GPIO_Port, LED_BUILTIN_Pin);
+		}
+#endif	//if PANEL_NOT_CONNECTED==0
+		motorHandler();
+
+		if (serial_available(&debug) > 0) {
+			char c = serial_read(&debug);
+
+			if (c == '0') {
+				g_panel_command.tiltSpeedDesired = 0;
+				bufLen = sprintf(buf, "motor Stop!\r\n");
+				serial_write_str(&debug, buf, bufLen);
+			}
+			else if (c == 'e') {
+				if (bitRead(g_motor_weapon_status.motorStatus, 1)) {
+					bitClear(g_panel_command.movementMode, 1);
+					bufLen = sprintf(buf, "motor Disable!\r\n");
+					serial_write_str(&debug, buf, bufLen);
+				}
+				else {
+					bitSet(g_panel_command.movementMode, 1);
+					bufLen = sprintf(buf, "motor Enable!\r\n");
+					serial_write_str(&debug, buf, bufLen);
+				}
+			}
+			else if (c == 'p') {
+				g_panel_command.tiltSpeedDesired = 100000;
+				bufLen = sprintf(buf, "spd= %ld\r\n", g_panel_command.tiltSpeedDesired);
+				serial_write_str(&debug, buf, bufLen);
+			}
+			else if (c == 'o') {
+				g_panel_command.tiltSpeedDesired = 50000;
+				bufLen = sprintf(buf, "spd= %ld\r\n", g_panel_command.tiltSpeedDesired);
+				serial_write_str(&debug, buf, bufLen);
+			}
+			else if (c == 'i') {
+				g_panel_command.tiltSpeedDesired = 100;
+				bufLen = sprintf(buf, "spd= %ld\r\n", g_panel_command.tiltSpeedDesired);
+				serial_write_str(&debug, buf, bufLen);
+			}
+			else if (c == 'q') {
+				g_panel_command.tiltSpeedDesired = -100000;
+				bufLen = sprintf(buf, "spd= %ld\r\n", g_panel_command.tiltSpeedDesired);
+				serial_write_str(&debug, buf, bufLen);
+			}
+			else if (c == 'w') {
+				g_panel_command.tiltSpeedDesired = -50000;
+				bufLen = sprintf(buf, "spd= %ld\r\n", g_panel_command.tiltSpeedDesired);
+				serial_write_str(&debug, buf, bufLen);
+			}
+			else if (c == 'e') {
+				g_panel_command.tiltSpeedDesired = -100;
+				bufLen = sprintf(buf, "spd= %ld\r\n", g_panel_command.tiltSpeedDesired);
+				serial_write_str(&debug, buf, bufLen);
+			}
+		}
+
+//		if (serial_available(&debug) > 0) {
+//			char c = serial_read(&debug);
+//
+//			if (c == '0') {
+//				Ingenia_setTargetPositionVelocity(test.servo, 0, 0, 1, 0, 1);
+//				bufLen = sprintf(buf, "motor Stop!\r\n");
+//				serial_write_str(&debug, buf, bufLen);
+//			}
+//			else if (c == 'e') {
+//				if (_debugMotorEnable == 0) {
+//					Ingenia_enableMotor(test.servo);
+//					bufLen = sprintf(buf, "motor set to enable!\r\n");
+//					serial_write_str(&debug, buf, bufLen);
+//					_debugMotorEnable = 1;
+//				}
+//				else {
+//					Ingenia_disableMotor(test.servo);
+//					bufLen = sprintf(buf, "motor set to disable!\r\n");
+//					serial_write_str(&debug, buf, bufLen);
+//					_debugMotorEnable = 0;
+//				}
+//			}
+//			else if (c == '<') {
+//				if (_debugMotorEnable != 0) {
+//					_debugPos = test.servo->posActual - test.pos1Rev;
+//					Ingenia_setTargetPositionVelocity(test.servo, _debugPos, test.maxVelo, 1, 0, 0);
+//					bufLen = sprintf(buf, "move left! %ld\r\n", _debugPos);
+//					serial_write_str(&debug, buf, bufLen);
+//				}
+//			}
+//			else if (c == '>') {
+//				if (_debugMotorEnable != 0) {
+//					_debugPos = test.servo->posActual + test.pos1Rev;
+//					Ingenia_setTargetPositionVelocity(test.servo, _debugPos, test.maxVelo, 1, 0, 0);
+//					bufLen = sprintf(buf, "move right! %ld\r\n", _debugPos);
+//					serial_write_str(&debug, buf, bufLen);
+//				}
+//			}
+//			else if (c == 'T') {
+//				bufLen = sprintf(buf, "\r\n\r\nfdcan1:0x%lX fdcan2:0x%lX uart1=0x%lX\r\n",
+//						HAL_FDCAN_GetError(&hfdcan1), HAL_FDCAN_GetError(&hfdcan2),
+//						HAL_UART_GetError(&huart1));
+//				serial_write_str(&debug, buf, bufLen);
+//			}
+//		}
+		/* TODO END LOOP*/
 	}
 	/* USER CODE END 3 */
 }
@@ -157,8 +352,9 @@ void SystemClock_Config(void)
 	/** Initializes the RCC Oscillators according to the specified parameters
 	 * in the RCC_OscInitTypeDef structure.
 	 */
-	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI | RCC_OSCILLATORTYPE_HSE;
 	RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+	RCC_OscInitStruct.LSIState = RCC_LSI_ON;
 	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
 	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
 	RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV2;
@@ -183,449 +379,319 @@ void SystemClock_Config(void)
 	}
 	/** Initializes the peripherals clocks
 	 */
-	PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1 | RCC_PERIPHCLK_QSPI
-			| RCC_PERIPHCLK_FDCAN;
+	PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1 | RCC_PERIPHCLK_FDCAN;
 	PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
 	PeriphClkInit.FdcanClockSelection = RCC_FDCANCLKSOURCE_PCLK1;
-	PeriphClkInit.QspiClockSelection = RCC_QSPICLKSOURCE_SYSCLK;
-
 	if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
 		Error_Handler();
 	}
-}
-
-/**
- * @brief FDCAN1 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_FDCAN1_Init(void)
-{
-
-	/* USER CODE BEGIN FDCAN1_Init 0 */
-
-	/* USER CODE END FDCAN1_Init 0 */
-
-	/* USER CODE BEGIN FDCAN1_Init 1 */
-
-	/* USER CODE END FDCAN1_Init 1 */
-	hfdcan1.Instance = FDCAN1;
-	hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
-	hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
-	hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
-	hfdcan1.Init.AutoRetransmission = DISABLE;
-	hfdcan1.Init.TransmitPause = DISABLE;
-	hfdcan1.Init.ProtocolException = DISABLE;
-	hfdcan1.Init.NominalPrescaler = 1;
-	hfdcan1.Init.NominalSyncJumpWidth = 1;
-	hfdcan1.Init.NominalTimeSeg1 = 2;
-	hfdcan1.Init.NominalTimeSeg2 = 2;
-	hfdcan1.Init.DataPrescaler = 1;
-	hfdcan1.Init.DataSyncJumpWidth = 1;
-	hfdcan1.Init.DataTimeSeg1 = 1;
-	hfdcan1.Init.DataTimeSeg2 = 1;
-	hfdcan1.Init.StdFiltersNbr = 0;
-	hfdcan1.Init.ExtFiltersNbr = 0;
-	hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
-	if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK) {
-		Error_Handler();
-	}
-	/* USER CODE BEGIN FDCAN1_Init 2 */
-
-	/* USER CODE END FDCAN1_Init 2 */
-
-}
-
-/**
- * @brief FDCAN2 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_FDCAN2_Init(void)
-{
-
-	/* USER CODE BEGIN FDCAN2_Init 0 */
-
-	/* USER CODE END FDCAN2_Init 0 */
-
-	/* USER CODE BEGIN FDCAN2_Init 1 */
-
-	/* USER CODE END FDCAN2_Init 1 */
-	hfdcan2.Instance = FDCAN2;
-	hfdcan2.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
-	hfdcan2.Init.Mode = FDCAN_MODE_NORMAL;
-	hfdcan2.Init.AutoRetransmission = DISABLE;
-	hfdcan2.Init.TransmitPause = DISABLE;
-	hfdcan2.Init.ProtocolException = DISABLE;
-	hfdcan2.Init.NominalPrescaler = 1;
-	hfdcan2.Init.NominalSyncJumpWidth = 1;
-	hfdcan2.Init.NominalTimeSeg1 = 2;
-	hfdcan2.Init.NominalTimeSeg2 = 2;
-	hfdcan2.Init.DataPrescaler = 1;
-	hfdcan2.Init.DataSyncJumpWidth = 1;
-	hfdcan2.Init.DataTimeSeg1 = 1;
-	hfdcan2.Init.DataTimeSeg2 = 1;
-	hfdcan2.Init.StdFiltersNbr = 0;
-	hfdcan2.Init.ExtFiltersNbr = 0;
-	hfdcan2.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
-	if (HAL_FDCAN_Init(&hfdcan2) != HAL_OK) {
-		Error_Handler();
-	}
-	/* USER CODE BEGIN FDCAN2_Init 2 */
-
-	/* USER CODE END FDCAN2_Init 2 */
-
-}
-
-/**
- * @brief QUADSPI1 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_QUADSPI1_Init(void)
-{
-
-	/* USER CODE BEGIN QUADSPI1_Init 0 */
-
-	/* USER CODE END QUADSPI1_Init 0 */
-
-	/* USER CODE BEGIN QUADSPI1_Init 1 */
-
-	/* USER CODE END QUADSPI1_Init 1 */
-	/* QUADSPI1 parameter configuration*/
-	hqspi1.Instance = QUADSPI;
-	hqspi1.Init.ClockPrescaler = 255;
-	hqspi1.Init.FifoThreshold = 1;
-	hqspi1.Init.SampleShifting = QSPI_SAMPLE_SHIFTING_NONE;
-	hqspi1.Init.FlashSize = 1;
-	hqspi1.Init.ChipSelectHighTime = QSPI_CS_HIGH_TIME_1_CYCLE;
-	hqspi1.Init.ClockMode = QSPI_CLOCK_MODE_0;
-	hqspi1.Init.FlashID = QSPI_FLASH_ID_1;
-	hqspi1.Init.DualFlash = QSPI_DUALFLASH_DISABLE;
-	if (HAL_QSPI_Init(&hqspi1) != HAL_OK) {
-		Error_Handler();
-	}
-	/* USER CODE BEGIN QUADSPI1_Init 2 */
-
-	/* USER CODE END QUADSPI1_Init 2 */
-
-}
-
-/**
- * @brief TIM3 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_TIM3_Init(void)
-{
-
-	/* USER CODE BEGIN TIM3_Init 0 */
-
-	/* USER CODE END TIM3_Init 0 */
-
-	TIM_Encoder_InitTypeDef sConfig = { 0 };
-	TIM_MasterConfigTypeDef sMasterConfig = { 0 };
-
-	/* USER CODE BEGIN TIM3_Init 1 */
-
-	/* USER CODE END TIM3_Init 1 */
-	htim3.Instance = TIM3;
-	htim3.Init.Prescaler = 0;
-	htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim3.Init.Period = 65535;
-	htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-	htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-	sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
-	sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
-	sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
-	sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
-	sConfig.IC1Filter = 10;
-	sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
-	sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
-	sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
-	sConfig.IC2Filter = 10;
-	if (HAL_TIM_Encoder_Init(&htim3, &sConfig) != HAL_OK) {
-		Error_Handler();
-	}
-	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-	if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK) {
-		Error_Handler();
-	}
-	/* USER CODE BEGIN TIM3_Init 2 */
-
-	/* USER CODE END TIM3_Init 2 */
-
-}
-
-/**
- * @brief TIM4 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_TIM4_Init(void)
-{
-
-	/* USER CODE BEGIN TIM4_Init 0 */
-
-	/* USER CODE END TIM4_Init 0 */
-
-	TIM_Encoder_InitTypeDef sConfig = { 0 };
-	TIM_MasterConfigTypeDef sMasterConfig = { 0 };
-
-	/* USER CODE BEGIN TIM4_Init 1 */
-
-	/* USER CODE END TIM4_Init 1 */
-	htim4.Instance = TIM4;
-	htim4.Init.Prescaler = 0;
-	htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim4.Init.Period = 65535;
-	htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-	htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-	sConfig.EncoderMode = TIM_ENCODERMODE_TI1;
-	sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
-	sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
-	sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
-	sConfig.IC1Filter = 0;
-	sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
-	sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
-	sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
-	sConfig.IC2Filter = 0;
-	if (HAL_TIM_Encoder_Init(&htim4, &sConfig) != HAL_OK) {
-		Error_Handler();
-	}
-	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-	if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK) {
-		Error_Handler();
-	}
-	/* USER CODE BEGIN TIM4_Init 2 */
-
-	/* USER CODE END TIM4_Init 2 */
-
-}
-
-/**
- * @brief TIM8 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_TIM8_Init(void)
-{
-
-	/* USER CODE BEGIN TIM8_Init 0 */
-
-	/* USER CODE END TIM8_Init 0 */
-
-	TIM_ClockConfigTypeDef sClockSourceConfig = { 0 };
-	TIM_MasterConfigTypeDef sMasterConfig = { 0 };
-	TIM_OC_InitTypeDef sConfigOC = { 0 };
-	TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = { 0 };
-
-	/* USER CODE BEGIN TIM8_Init 1 */
-
-	/* USER CODE END TIM8_Init 1 */
-	htim8.Instance = TIM8;
-	htim8.Init.Prescaler = 0;
-	htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim8.Init.Period = 65535;
-	htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-	htim8.Init.RepetitionCounter = 0;
-	htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-	if (HAL_TIM_Base_Init(&htim8) != HAL_OK) {
-		Error_Handler();
-	}
-	sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-	if (HAL_TIM_ConfigClockSource(&htim8, &sClockSourceConfig) != HAL_OK) {
-		Error_Handler();
-	}
-	if (HAL_TIM_PWM_Init(&htim8) != HAL_OK) {
-		Error_Handler();
-	}
-	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-	sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
-	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-	if (HAL_TIMEx_MasterConfigSynchronization(&htim8, &sMasterConfig) != HAL_OK) {
-		Error_Handler();
-	}
-	sConfigOC.OCMode = TIM_OCMODE_PWM1;
-	sConfigOC.Pulse = 0;
-	sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-	sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
-	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-	sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
-	sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-	if (HAL_TIM_PWM_ConfigChannel(&htim8, &sConfigOC, TIM_CHANNEL_1) != HAL_OK) {
-		Error_Handler();
-	}
-	if (HAL_TIM_PWM_ConfigChannel(&htim8, &sConfigOC, TIM_CHANNEL_2) != HAL_OK) {
-		Error_Handler();
-	}
-	sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
-	sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
-	sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
-	sBreakDeadTimeConfig.DeadTime = 0;
-	sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
-	sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
-	sBreakDeadTimeConfig.BreakFilter = 0;
-	sBreakDeadTimeConfig.BreakAFMode = TIM_BREAK_AFMODE_INPUT;
-	sBreakDeadTimeConfig.Break2State = TIM_BREAK2_DISABLE;
-	sBreakDeadTimeConfig.Break2Polarity = TIM_BREAK2POLARITY_HIGH;
-	sBreakDeadTimeConfig.Break2Filter = 0;
-	sBreakDeadTimeConfig.Break2AFMode = TIM_BREAK_AFMODE_INPUT;
-	sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
-	if (HAL_TIMEx_ConfigBreakDeadTime(&htim8, &sBreakDeadTimeConfig) != HAL_OK) {
-		Error_Handler();
-	}
-	/* USER CODE BEGIN TIM8_Init 2 */
-
-	/* USER CODE END TIM8_Init 2 */
-	HAL_TIM_MspPostInit(&htim8);
-
-}
-
-/**
- * @brief USART1 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_USART1_UART_Init(void)
-{
-
-	/* USER CODE BEGIN USART1_Init 0 */
-
-	/* USER CODE END USART1_Init 0 */
-
-	/* USER CODE BEGIN USART1_Init 1 */
-
-	/* USER CODE END USART1_Init 1 */
-	huart1.Instance = USART1;
-	huart1.Init.BaudRate = 115200;
-	huart1.Init.WordLength = UART_WORDLENGTH_8B;
-	huart1.Init.StopBits = UART_STOPBITS_1;
-	huart1.Init.Parity = UART_PARITY_NONE;
-	huart1.Init.Mode = UART_MODE_TX_RX;
-	huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-	huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-	huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-	huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-	huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-	if (HAL_UART_Init(&huart1) != HAL_OK) {
-		Error_Handler();
-	}
-	if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK) {
-		Error_Handler();
-	}
-	if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK) {
-		Error_Handler();
-	}
-	if (HAL_UARTEx_DisableFifoMode(&huart1) != HAL_OK) {
-		Error_Handler();
-	}
-	/* USER CODE BEGIN USART1_Init 2 */
-
-	/* USER CODE END USART1_Init 2 */
-
-}
-
-/**
- * @brief GPIO Initialization Function
- * @param None
- * @retval None
- */
-static void MX_GPIO_Init(void)
-{
-	GPIO_InitTypeDef GPIO_InitStruct = { 0 };
-
-	/* GPIO Ports Clock Enable */
-	__HAL_RCC_GPIOC_CLK_ENABLE();
-	__HAL_RCC_GPIOF_CLK_ENABLE();
-	__HAL_RCC_GPIOG_CLK_ENABLE();
-	__HAL_RCC_GPIOA_CLK_ENABLE();
-	__HAL_RCC_GPIOB_CLK_ENABLE();
-	__HAL_RCC_GPIOD_CLK_ENABLE();
-
-	/*Configure GPIO pin Output Level */
-	HAL_GPIO_WritePin(COCK_EN_GPIO_Port, COCK_EN_Pin, GPIO_PIN_RESET);
-
-	/*Configure GPIO pin Output Level */
-	HAL_GPIO_WritePin(TRIGGER_ENABLE_GPIO_Port, TRIGGER_ENABLE_Pin, GPIO_PIN_RESET);
-
-	/*Configure GPIO pin Output Level */
-	HAL_GPIO_WritePin(LED_BUILTIN_GPIO_Port, LED_BUILTIN_Pin, GPIO_PIN_RESET);
-
-	/*Configure GPIO pins : PC13 PC14 PC15 PC0
-	 PC1 PC2 PC3 PC4
-	 PC5 PC10 PC11 PC12 */
-	GPIO_InitStruct.Pin = GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15 | GPIO_PIN_0 | GPIO_PIN_1
-			| GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_10 | GPIO_PIN_11
-			| GPIO_PIN_12;
-	GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-	/*Configure GPIO pin : PG10 */
-	GPIO_InitStruct.Pin = GPIO_PIN_10;
-	GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
-
-	/*Configure GPIO pins : PA0 PA1 PA4 PA5
-	 PA15 */
-	GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_15;
-	GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-	/*Configure GPIO pins : PB2 PB10 PB11 PB8
-	 PB9 */
-	GPIO_InitStruct.Pin = GPIO_PIN_2 | GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_8 | GPIO_PIN_9;
-	GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-	/*Configure GPIO pins : COUNTER_PULSE_Pin LIM_AZ_ZERO_Pin */
-	GPIO_InitStruct.Pin = COUNTER_PULSE_Pin | LIM_AZ_ZERO_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-	/*Configure GPIO pin : COCK_EN_Pin */
-	GPIO_InitStruct.Pin = COCK_EN_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(COCK_EN_GPIO_Port, &GPIO_InitStruct);
-
-	/*Configure GPIO pins : LIM_EL_DOWN_Pin LIM_EL_UP_Pin */
-	GPIO_InitStruct.Pin = LIM_EL_DOWN_Pin | LIM_EL_UP_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-	/*Configure GPIO pin : TRIGGER_ENABLE_Pin */
-	GPIO_InitStruct.Pin = TRIGGER_ENABLE_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(TRIGGER_ENABLE_GPIO_Port, &GPIO_InitStruct);
-
-	/*Configure GPIO pin : LED_BUILTIN_Pin */
-	GPIO_InitStruct.Pin = LED_BUILTIN_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(LED_BUILTIN_GPIO_Port, &GPIO_InitStruct);
-
+	/** Enables the Clock Security System
+	 */
+	HAL_RCC_EnableCSS();
 }
 
 /* USER CODE BEGIN 4 */
-/* TODO USER FUNCTION*/
-void USART1_IRQHandler(void)
+/* TODO User Functions*/
+static void busInit(void)
 {
-	USARTx_IRQHandler(&debug);
+	char buf[RING_BUFFER_TX_SIZE];
+	uint16_t bufLen;
+
+	bufLen = sprintf(buf, "fdcan bus Init...\r\n");
+	serial_write_str(&debug, buf, bufLen);
+
+	FDCAN_RX_Filter_Panel(&hfdcan1, 0);
+	busRecvPanel.id = RWS_PANEL_ID;
+	FDCAN_TX_Config(&busSendMotor.txHeader, RWS_MOTOR_ID, RWS_MOTOR_DATA_LENGTH);
+	FDCAN_Config(&hfdcan1);
+
+	bufLen = sprintf(buf, "done!\r\n");
+	serial_write_str(&debug, buf, bufLen);
 }
 
+void Bus_Notification_Callback(FDCAN_RxHeaderTypeDef *rxHeader, uint8_t *data)
+{
+	if (rxHeader->Identifier == RWS_PANEL_ID) {
+		busRecvPanel.lastTimestamp = HAL_GetTick();
+		busRecvPanel.rxHeader = *rxHeader;
+		memcpy(busRecvPanel.data, data, FDCAN_Convert_Datalength(rxHeader->DataLength));
+		busRecvPanel.counter++;
+	}
+}
+
+static void motorParamInit(Servo_t *servo)
+{
+	Ingenia_write_nmt(servo, NMT_START_REMOTE_NODE);
+
+	/* set mode to profile position */
+	Ingenia_setModeOfOperation(servo, DRIVE_MODE_PROFILE_POSITION);
+
+	if (servo->_u8Node == MTR_AZ_ID) {
+		/* set max motor speed */
+		Ingenia_write_sdo_u32(servo, 0x6080, 0, 350UL);
+		/* set max velocity profile */
+		Ingenia_write_sdo_u32(servo, 0x607F, 0, 350UL);
+		/* set max profile acceleration */
+		Ingenia_write_sdo_u32(servo, 0x6083, 0, 700UL);
+		/* set max profile de-acceleration */
+		Ingenia_write_sdo_u32(servo, 0x6084, 0, 700UL);
+		/* set max profile quick stop de-acceleration */
+		Ingenia_write_sdo_u32(servo, 0x6085, 0, 1000UL);
+	}
+	else if (servo->_u8Node == MTR_EL_ID) {
+		/* set max motor speed */
+		Ingenia_write_sdo_u32(servo, 0x6080, 0, 100000UL);
+		/* set max velocity profile */
+		Ingenia_write_sdo_u32(servo, 0x607F, 0, 100000UL);
+		/* set max profile acceleration */
+		Ingenia_write_sdo_u32(servo, 0x6083, 0, 200000UL);
+		/* set max profile de-acceleration */
+		Ingenia_write_sdo_u32(servo, 0x6084, 0, 200000UL);
+		/* set max profile quick stop de-acceleration */
+		Ingenia_write_sdo_u32(servo, 0x6085, 0, 500000UL);
+	}
+
+	/* set TPDO4 event timer */
+	Ingenia_write_sdo_u16(servo, 0x1803, 5, 10);
+}
+
+static HAL_StatusTypeDef motorInit()
+{
+	char buf[RING_BUFFER_TX_SIZE];
+	uint16_t bufLen;
+
+#if MTR_DEBUG_ENABLE==1
+	bufLen = sprintf(buf, "motor init...\r\n");
+	serial_write_str(&debug, buf, bufLen);
+#endif	//if MTR_DEBUG_ENABLE==1
+
+	if (HAL_FDCAN_ActivateNotification(&hfdcan2, FDCAN_IT_BUS_OFF, 0) != HAL_OK) {
+		Error_Handler();
+	}
+
+	Ingenia_begin(&hfdcan2);
+
+#if MTR_AZ_ENABLE==1
+	if (Ingenia_init(&mtrAzi, MTR_AZ_ID) != HAL_OK) {
+#if MTR_DEBUG_ENABLE==1
+		bufLen = sprintf(buf, "init MTR_AZI failed!\r\n");
+		serial_write_str(&debug, buf, bufLen);
+		serial_write_flush(&debug);
+#endif	//if MTR_DEBUG_ENABLE==1
+
+		return HAL_ERROR;
+	}
+
+#if MTR_DEBUG_ENABLE==1
+	bufLen = sprintf(buf, "enable pan motor...");
+	serial_write_str(&debug, buf, bufLen);
+#endif	//if MTR_DEBUG_ENABLE==1
+
+	motorParamInit(&mtrAzi);
+	Ingenia_disableMotor(&mtrAzi);
+
+#if MTR_DEBUG_ENABLE==1
+	bufLen = sprintf(buf, "done!\r\n");
+	serial_write_str(&debug, buf, bufLen);
+#endif	//if MTR_DEBUG_ENABLE==1
+
+#endif	//if MTR_AZ_ENABLE==1
+
+#if MTR_EL_ENABLE==1
+	if (Ingenia_init(&mtrEle, MTR_EL_ID) != HAL_OK) {
+#if MTR_DEBUG_ENABLE==1
+		bufLen = sprintf(buf, "init MTR_ELE failed!\r\n");
+		serial_write_str(&debug, buf, bufLen);
+		serial_write_flush(&debug);
+#endif	//if MTR_DEBUG_ENABLE==1
+
+		return HAL_ERROR;
+	}
+
+#if MTR_DEBUG_ENABLE==1
+	bufLen = sprintf(buf, "enable tilt motor...");
+	serial_write_str(&debug, buf, bufLen);
+#endif	//if MTR_DEBUG_ENABLE==1
+
+	motorParamInit(&mtrEle);
+	Ingenia_disableMotor(&mtrEle);
+
+#if MTR_DEBUG_ENABLE==1
+	bufLen = sprintf(buf, "done!\r\n");
+	serial_write_str(&debug, buf, bufLen);
+#endif	//if MTR_DEBUG_ENABLE==1
+#endif	//if MTR_EL_ENABLE==1
+
+	return HAL_OK;
+}
+
+void Ingenia_tpdo_callback(CAN_Buffer_t *buffer)
+{
+	CAN_Data_t data;
+	uint32_t idNode = 0;
+	int _pos = 0, _velo = 0;
+
+	if (can_buffer_available(buffer) > 0) {
+		can_buffer_read(buffer, &data);
+		countTPDO4++;
+		if ((data.canRxHeader.Identifier & COB_TPDO4) == COB_TPDO4) {
+
+			idNode = data.canRxHeader.Identifier - COB_TPDO4;
+			for ( int i = 0; i < 4; i++ ) {
+				_pos |= (int) data.rxData[i] << (8 * i);
+				_velo |= (int) data.rxData[i + 4] << (8 * i);
+			}
+
+			if (idNode == mtrAzi._u8Node) {
+				mtrAzi.posActual = _pos;
+				mtrAzi.veloActual = _velo;
+			}
+			else if (idNode == mtrEle._u8Node) {
+				mtrEle.posActual = _pos;
+				mtrEle.veloActual = _velo;
+			}
+
+		}
+
+	}
+}
+
+static void motorHandler()
+{
+	static uint8_t debugDisplayCounter = 0;
+	static panel_command_t _prev_command = { 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0 };
+	bool _bool;
+	int32_t _posRel;
+	uint32_t _veloRel;
+	Rws_Union_u _veloCmd;
+	char buf[RING_BUFFER_TX_SIZE];
+	uint16_t bufLen;
+
+	if (g_panel_command.timestamp > _prev_command.timestamp) {
+		if (g_panel_command.movementMode != _prev_command.movementMode) {
+
+#if MTR_AZ_ENABLE==1
+			_bool = bitRead(g_panel_command.movementMode, 0);
+			if (_bool != bitRead(_prev_command.movementMode, 0)) {
+				if (_bool)
+					/* ENABLE PAN MOTOR */
+					Ingenia_enableMotor(&mtrAzi);
+				else
+					/* DISABLE PAN MOTOR */
+					Ingenia_disableMotor(&mtrAzi);
+			}
+	#endif	//if MTR_AZ_ENABLE==1
+
+#if MTR_EL_ENABLE==1
+			_bool = bitRead(g_panel_command.movementMode, 1);
+			if (_bool != bitRead(_prev_command.movementMode, 1)) {
+				if (_bool) {
+					/* ENABLE TILT MOTOR */
+					Ingenia_enableMotor(&mtrEle);
+					bitSet(g_motor_weapon_status.motorStatus, 1);
+				}
+				else {
+					/* DISABLE TILT MOTOR */
+					Ingenia_disableMotor(&mtrEle);
+					bitClear(g_motor_weapon_status.motorStatus, 1);
+				}
+			}
+#endif	//if MTR_EL_ENABLE==1
+
+			_prev_command.movementMode = g_panel_command.movementMode;
+		}
+
+#if MTR_AZ_ENABLE==1
+
+	#endif	//if MTR_AZ_ENABLE==1
+
+#if MTR_EL_ENABLE==1
+		/* if motor enable */
+		if (bitRead(_prev_command.movementMode, 1)) {
+			_veloCmd.i32 = g_panel_command.tiltSpeedDesired;
+			_veloRel = labs(_veloCmd.i32);
+			_posRel = mtrEle.posActual + (_veloCmd.i32 / 10);
+			/* TODO convert velocity to c/s */
+
+			Ingenia_setTargetPositionVelocity(&mtrEle, _posRel, _veloRel, 1, 0, 0);
+
+			if (++debugDisplayCounter > 20) {
+				bufLen = sprintf(buf, "[%ld]p:v(cmd)=%ld:%ld\t(act)p:v=%ld:%ld\r\n", HAL_GetTick(),
+						_posRel, _veloRel, mtrEle.posActual, mtrEle.veloActual);
+				if (ring_buffer_free(&debug.TBufferTx) > bufLen)
+					serial_write_str(&debug, buf, bufLen);
+				debugDisplayCounter = 0;
+			}
+
+			_prev_command.tiltSpeedDesired = g_panel_command.tiltSpeedDesired;
+		}
+#endif	//if MTR_EL_ENABLE==1
+
+		_prev_command.timestamp = g_panel_command.timestamp;
+	}
+}
+
+static void busHandler(void)
+{
+	static uint8_t panel_counter = 0;
+	static uint32_t motorSendTimer = 0;
+	Rws_Union_u _pan_pos, _pan_velo;
+	Rws_Union_u _tilt_pos, _tilt_velo;
+	Rws_Union_u _cmd[4];
+
+	if (panel_counter != busRecvPanel.counter) {
+		panel_counter = busRecvPanel.counter;
+
+		g_panel_command.timestamp = busRecvPanel.lastTimestamp;
+		g_panel_command.movementMode = busRecvPanel.data[0];
+		g_panel_command.weaponCommand = busRecvPanel.data[2];
+
+		for ( int _i = 0; _i < 4; _i++ ) {
+			_cmd[0].u8[_i] = busRecvPanel.data[4 + _i];
+			_cmd[1].u8[_i] = busRecvPanel.data[8 + _i];
+			_cmd[2].u8[_i] = busRecvPanel.data[12 + _i];
+			_cmd[3].u8[_i] = busRecvPanel.data[16 + _i];
+		}
+		g_panel_command.panSpeedDesired = _cmd[0].i32;
+		g_panel_command.tiltSpeedDesired = _cmd[1].i32;
+		g_panel_command.panSpeedCorrection = _cmd[2].i32;
+		g_panel_command.tiltSpeedCorrection = _cmd[3].i32;
+
+		HAL_GPIO_TogglePin(LED_BUILTIN_GPIO_Port, LED_BUILTIN_Pin);
+	}
+
+	if (HAL_GetTick() >= motorSendTimer) {
+		motorSendTimer = HAL_GetTick() + 50;
+
+		busSendMotor.data[0] = g_motor_weapon_status.motorStatus;
+		busSendMotor.data[1] = g_motor_weapon_status.weaponStatus;
+		busSendMotor.data[2] = g_motor_weapon_status.munitionCounter & 0xFF;
+		busSendMotor.data[3] = (g_motor_weapon_status.munitionCounter >> 8) & 0xFF;
+
+		_pan_pos.i32 = mtrAzi.posActual;
+		_pan_velo.i32 = mtrAzi.veloActual;
+		_tilt_pos.i32 = mtrEle.posActual;
+		_tilt_velo.i32 = mtrEle.veloActual;
+
+		for ( int _index = 0; _index < 4; _index++ ) {
+			busSendMotor.data[4 + _index] = _pan_pos.u8[_index];
+			busSendMotor.data[8 + _index] = _pan_velo.u8[_index];
+			busSendMotor.data[12 + _index] = _tilt_pos.u8[_index];
+			busSendMotor.data[16 + _index] = _tilt_velo.u8[_index];
+		}
+
+		HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &busSendMotor.txHeader, busSendMotor.data);
+	}
+}
+
+void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t ErrorStatusITs)
+{
+	if (hfdcan->Instance == FDCAN1)
+		g_fdcan_bus_busOff_error = 1;
+	else if (hfdcan->Instance == FDCAN2)
+		g_fdcan_motor_busOff_error = 1;
+}
+/* TODO END user functions*/
 /* USER CODE END 4 */
 
 /**
@@ -636,6 +702,7 @@ void Error_Handler(void)
 {
 	/* USER CODE BEGIN Error_Handler_Debug */
 	/* User can add his own implementation to report the HAL error return state */
+	HAL_GPIO_WritePin(LED_BUILTIN_GPIO_Port, LED_BUILTIN_Pin, GPIO_PIN_SET);
 	__disable_irq();
 	while (1) {
 	}
