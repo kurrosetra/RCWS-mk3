@@ -10,6 +10,9 @@
 #include "main.h"
 #include "stm_hal_serial.h"
 
+//#define LOG(str, ...) printf("[%ld %s:%d] " str, HAL_GetTick(), __FILE_NAME__, __LINE__, ##__VA_ARGS__)
+//#define LOG_E(str, ...) printf("[%s Err:%d] " str,  __FILE_NAME__,__LINE__, ##__VA_ARGS__)
+
 TSerial *terminal;
 
 void retarget_init(TSerial *serial)
@@ -18,7 +21,7 @@ void retarget_init(TSerial *serial)
 	setbuf(stdout, NULL);
 	setbuf(stderr, NULL);
 
-	terminal=serial;
+	terminal = serial;
 }
 
 #ifdef __GNUC__
@@ -36,7 +39,7 @@ PUTCHAR_PROTOTYPE
 
 uint8_t retarget_recv()
 {
-	while(serial_available(terminal)==0)
+	while (serial_available(terminal) == 0)
 		HAL_Delay(10);
 
 	return serial_read(terminal);

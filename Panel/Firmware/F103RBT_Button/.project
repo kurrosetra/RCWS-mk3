@@ -29,4 +29,16 @@
 		<nature>org.eclipse.cdt.managedbuilder.core.managedBuildNature</nature>
 		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
 	</natures>
+	<linkedResources>
+		<link>
+			<name>config</name>
+			<type>2</type>
+			<location>D:/Cloud/NextCloud/stm32_workspace/RCWS-mk3/share_lib/config</location>
+		</link>
+		<link>
+			<name>uart</name>
+			<type>2</type>
+			<location>D:/Cloud/NextCloud/stm32_workspace/RCWS-mk3/share_lib/uart</location>
+		</link>
+	</linkedResources>
 </projectDescription>

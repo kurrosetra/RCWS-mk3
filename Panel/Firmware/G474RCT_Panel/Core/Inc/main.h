@@ -1,22 +1,22 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.h
-  * @brief          : Header for main.c file.
-  *                   This file contains the common defines of the application.
-  ******************************************************************************
-  * @attention
-  *
-  * <h2><center>&copy; Copyright (c) 2021 STMicroelectronics.
-  * All rights reserved.</center></h2>
-  *
-  * This software component is licensed by ST under BSD 3-Clause license,
-  * the "License"; You may not use this file except in compliance with the
-  * License. You may obtain a copy of the License at:
-  *                        opensource.org/licenses/BSD-3-Clause
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.h
+ * @brief          : Header for main.c file.
+ *                   This file contains the common defines of the application.
+ ******************************************************************************
+ * @attention
+ *
+ * <h2><center>&copy; Copyright (c) 2021 STMicroelectronics.
+ * All rights reserved.</center></h2>
+ *
+ * This software component is licensed by ST under BSD 3-Clause license,
+ * the "License"; You may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at:
+ *                        opensource.org/licenses/BSD-3-Clause
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 
 /* Define to prevent recursive inclusion -------------------------------------*/
@@ -59,9 +59,9 @@ void Error_Handler(void);
 
 /* Private defines -----------------------------------------------------------*/
 #define TIM4_ON 1000
-#define TIM4_OFF 0
 #define LED_CH TIM_CHANNEL_1
 #define TRIG_CH TIM_CHANNEL_2
+#define TIM4_OFF 0
 #define SLA_POWER_EN_Pin GPIO_PIN_14
 #define SLA_POWER_EN_GPIO_Port GPIOC
 #define JSL_AZIMUTH_Pin GPIO_PIN_0
@@ -132,9 +132,13 @@ void Error_Handler(void);
 #define TRIG_PULSE_OUT_GPIO_Port GPIOB
 #define BOOT0_Pin GPIO_PIN_8
 #define BOOT0_GPIO_Port GPIOB
-#define BOOT0_EXTI_IRQn EXTI9_5_IRQn
 /* USER CODE BEGIN Private defines */
-
+#define BUTTON_DEBUG		0
+#define BUS_MOTOR_DEBUG		0
+#if BUS_MOTOR_DEBUG==0
+#define BUS_DEBUG			1
+#endif	//if BUS_MOTOR_DEBUG==0
+#define PC_DEBUG			1
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
@@ -142,5 +146,3 @@ void Error_Handler(void);
 #endif
 
 #endif /* __MAIN_H */
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

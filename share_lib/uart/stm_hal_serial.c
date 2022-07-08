@@ -1,14 +1,13 @@
 #include "stm_hal_serial.h"
 
-static void buffer_init(TSerial *serial, char *rxBuffer, const uint16_t rxBufsize, char *txBuffer,
-		const uint16_t txBufsize)
+static void buffer_init(TSerial *serial, char *rxBuffer, const uint16_t rxBufsize, char *txBuffer, const uint16_t txBufsize)
 {
 	ring_buffer_init(&serial->TBufferRx, (uint8_t*) rxBuffer, rxBufsize);
 	ring_buffer_init(&serial->TBufferTx, (uint8_t*) txBuffer, txBufsize);
 }
 
-void serial_init(TSerial *serial, char *rxBuffer, const uint16_t rxBufsize, char *txBuffer,
-		const uint16_t txBufsize, UART_HandleTypeDef *huart)
+void serial_init(TSerial *serial, char *rxBuffer, const uint16_t rxBufsize, char *txBuffer, const uint16_t txBufsize,
+		UART_HandleTypeDef *huart)
 {
 	buffer_init(serial, rxBuffer, rxBufsize, txBuffer, txBufsize);
 	serial->huart = huart;
@@ -30,13 +29,11 @@ void serial_write_flush(TSerial *serial)
 
 uint8_t USARTx_IRQHandler(TSerial *serial)
 {
-#if defined(USART_ISR_RXNE) && defined(USART_ISR_TXE) && defined(USART_ISR_TC)
+#if (defined(USART_ISR_RXNE) && defined(USART_ISR_TXE) && defined(USART_ISR_TC)) || defined(USART_ISR_RXNE_RXFNE)
 	uint32_t isrflags = READ_REG(serial->huart->Instance->ISR);
-#endif	//if defined(USART_ISR_RXNE) && defined(USART_ISR_TXE) && defined(USART_ISR_TC)
-
-#if defined(USART_SR_RXNE) && defined(USART_SR_TXE) && defined(USART_SR_TC)
+#elif defined(USART_SR_RXNE) && defined(USART_SR_TXE) && defined(USART_SR_TC)
 	uint32_t isrflags = READ_REG(serial->huart->Instance->SR);
-#endif	//if defined(USART_SR_RXNE) && defined(USART_SR_TXE) && defined(USART_SR_TC)
+#endif	//if defined(USART_ISR_RXNE) && defined(USART_ISR_TXE) && defined(USART_ISR_TC)
 
 	char c;
 	uint8_t ret = 0;
@@ -44,17 +41,17 @@ uint8_t USARTx_IRQHandler(TSerial *serial)
 	/* UART in mode Receiver ---------------------------------------------------*/
 #if defined(USART_ISR_RXNE)
 	if ((isrflags & USART_ISR_RXNE) != 0U) {
-#endif	//if defined(USART_ISR_RXNE)
-#if defined(USART_SR_RXNE)
+#elif defined(USART_SR_RXNE)
 	if ((isrflags & USART_SR_RXNE) != 0U) {
-#endif	//if defined(USART_SR_RXNE)
+#elif defined(USART_ISR_RXNE_RXFNE)
+	if ((isrflags & USART_ISR_RXNE_RXFNE) != 0) {
+#endif	//if defined(USART_ISR_RXNE)
 
 #if defined(USART_RDR_RDR)
 		c = (char) (serial->huart->Instance->RDR & 0xFF);
-#endif	//if defined(USART_RDR_RDR)
-#if defined(USART_DR_DR)
+#elif defined(USART_DR_DR)
 		c = (char) (serial->huart->Instance->DR & 0xFF);
-#endif	//if defined(USART_DR_DR)
+#endif	//if defined(USART_RDR_RDR)
 
 		ring_buffer_write(&serial->TBufferRx, (uint8_t*) &c, 1);
 
@@ -64,10 +61,12 @@ uint8_t USARTx_IRQHandler(TSerial *serial)
 	/* UART in mode Transmitter ------------------------------------------------*/
 #if defined(USART_ISR_TXE)
 	if ((isrflags & USART_ISR_TXE) != 0U) {
-#endif	//if defined(USART_ISR_TXE)
-#if defined(USART_SR_TXE)
+#elif defined(USART_SR_TXE)
 	if ((isrflags & USART_SR_TXE) != 0U) {
-#endif	//if defined(USART_SR_TXE)
+#elif defined(USART_ISR_TXE_TXFNF)
+	if ((isrflags & USART_ISR_TXE_TXFNF) != 0U) {
+#endif	//if defined(USART_ISR_TXE)
+
 		if (ring_buffer_available(&serial->TBufferTx) == 0) {
 
 			//no more data available
@@ -82,10 +81,9 @@ uint8_t USARTx_IRQHandler(TSerial *serial)
 			ring_buffer_read(&serial->TBufferTx, (uint8_t*) &c, 1);
 #if defined(USART_TDR_TDR)
 			serial->huart->Instance->TDR = (uint8_t) c;
-#endif	//if defined(USART_TDR_TDR)
-#if defined(USART_DR_DR)
+#elif defined(USART_DR_DR)
 			serial->huart->Instance->DR = (uint8_t) c;
-#endif	//if defined(USART_DR_DR)
+#endif	//if defined(USART_TDR_TDR)
 
 			return HAL_UART_RETURN_TX_INGOING;
 		}
@@ -94,10 +92,9 @@ uint8_t USARTx_IRQHandler(TSerial *serial)
 	/* UART in mode Transmitter end --------------------------------------------*/
 #if defined(USART_ISR_TC)
 	if ((isrflags & USART_ISR_TC) != 0U) {
-#endif	//if defined(USART_ISR_TC)
-#if defined(USART_SR_TC)
+#elif defined(USART_SR_TC)
 	if ((isrflags & USART_SR_TC) != 0U) {
-#endif	//if defined(USART_SR_TC)
+#endif	//if defined(USART_ISR_TC)
 
 		/* Disable the UART Transmit Complete Interrupt */
 		__HAL_UART_DISABLE_IT(serial->huart, UART_IT_TC);

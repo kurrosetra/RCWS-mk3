@@ -39,8 +39,8 @@ typedef struct
 uint8_t USARTx_IRQHandler(TSerial *serial);
 void retarget_init(TSerial *serial);
 
-void serial_init(TSerial *serial, char *rxBuffer, const uint16_t rxBufsize, char *txBuffer,
-		const uint16_t txBufsize, UART_HandleTypeDef *huart);
+void serial_init(TSerial *serial, char *rxBuffer, const uint16_t rxBufsize, char *txBuffer, const uint16_t txBufsize,
+		UART_HandleTypeDef *huart);
 uint16_t serial_available(TSerial *serial);
 uint16_t serial_read_free(TSerial *serial);
 uint16_t serial_write_free(TSerial *serial);

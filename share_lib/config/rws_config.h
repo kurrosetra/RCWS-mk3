@@ -18,18 +18,21 @@
 /** @defgroup RWS_ID_code RWS ID Code
  * @{
  */
-#define RWS_MOTOR_ID		0x300
-#define RWS_PANEL_ID		0x310
-#define RWS_OPTRONIK_ID		0x320
-#define RWS_IMU_ID			0x330
+#define RWS_PANEL_ID					0x110
+#define 	RWS_PANEL_CMD_ID				0x111
+#define 	RWS_PANEL_MAN_ID				0x112
+#define 	RWS_PANEL_TRK_ID				0x113
+#define 	RWS_PANEL_BAL_ID				0x114
+#define		RWS_PANEL_HOM_ID				0x115
+#define RWS_MOTOR_ID					0x120
+#define 	RWS_MOTOR_STATUS_ID				0x121
+#define 	RWS_MOTOR_POS_ID				0x122
+#define 	RWS_MOTOR_IMU_ID				0x123
+#define RWS_OPTRONIK_ID					0x130
+#define 	RWS_OPTRONIK_LRF_ID				0x131
+#define 	RWS_OPTRONIK_CAM_ID				0x132
+#define 	RWS_OPTRONIK_IMU_ID				0x133
 
-/** @defgroup RWS_data_length_code RWS ID Code
- * @{
- */
-#define RWS_MOTOR_DATA_LENGTH		FDCAN_DLC_BYTES_20
-#define RWS_PANEL_DATA_LENGTH		FDCAN_DLC_BYTES_20
-#define RWS_OPTRONIK_DATA_LENGTH	FDCAN_DLC_BYTES_8
-#define RWS_IMU_DATA_LENGTH			FDCAN_DLC_BYTES_9
 
 typedef union
 {
@@ -42,7 +45,6 @@ typedef union
 	uint8_t u8[4];
 } Rws_Union_u;
 
-#define RWS_MOTOR_PAN_MAX_SPEED				350UL
-#define RWS_MOTOR_TILT_MAX_SPEED			100000UL
+#define BUS_MAX_TIMEOUT			500
 
 #endif /* RWS_CONFIG_H_ */

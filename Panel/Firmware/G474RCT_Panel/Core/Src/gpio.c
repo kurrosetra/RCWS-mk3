@@ -1,3 +1,4 @@
+/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file    gpio.c
@@ -6,16 +7,16 @@
   ******************************************************************************
   * @attention
   *
-  * <h2><center>&copy; Copyright (c) 2021 STMicroelectronics.
-  * All rights reserved.</center></h2>
+  * Copyright (c) 2021 STMicroelectronics.
+  * All rights reserved.
   *
-  * This software component is licensed by ST under BSD 3-Clause license,
-  * the "License"; You may not use this file except in compliance with the
-  * License. You may obtain a copy of the License at:
-  *                        opensource.org/licenses/BSD-3-Clause
+  * This software is licensed under terms that can be found in the LICENSE file
+  * in the root directory of this software component.
+  * If no LICENSE file comes with this software, it is provided AS-IS.
   *
   ******************************************************************************
   */
+/* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
 #include "gpio.h"
@@ -148,37 +149,31 @@ void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : PtPin */
   GPIO_InitStruct.Pin = BOOT0_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(BOOT0_GPIO_Port, &GPIO_InitStruct);
-
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 14, 0);
-  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }
 
 /* USER CODE BEGIN 2 */
-
-void EXTI9_5_IRQHandler(void)
-{
-	/* EXTI line interrupt detected */
-	if (__HAL_GPIO_EXTI_GET_IT(GPIO_PIN_8) != 0x00u) {
-		__HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_8);
-
-		PanelDebugButton_CallBack(GPIO_PIN_8);
-	}
-}
-
-__weak void PanelDebugButton_CallBack(uint16_t GPIO_Pin)
-{
-	/* Prevent unused argument(s) compilation warning */
-	UNUSED(GPIO_Pin);
-
-	/* NOTE: This function should not be modified, when the callback is needed,
-	 the HAL_GPIO_EXTI_Callback could be implemented in the user file
-	 */
-}
+//
+//void EXTI9_5_IRQHandler(void)
+//{
+//	/* EXTI line interrupt detected */
+//	if (__HAL_GPIO_EXTI_GET_IT(GPIO_PIN_8) != 0x00u) {
+//		__HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_8);
+//
+//		PanelDebugButton_CallBack(GPIO_PIN_8);
+//	}
+//}
+//
+//__weak void PanelDebugButton_CallBack(uint16_t GPIO_Pin)
+//{
+//	/* Prevent unused argument(s) compilation warning */
+//	UNUSED(GPIO_Pin);
+//
+//	/* NOTE: This function should not be modified, when the callback is needed,
+//	 the HAL_GPIO_EXTI_Callback could be implemented in the user file
+//	 */
+//}
 /* USER CODE END 2 */
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

@@ -1,0 +1,127 @@
+/*
+ * BusOptronik.c
+ *
+ *  Created on: Dec 27, 2021
+ *      Author: miftakur
+ */
+
+#include <stdio.h>
+#include <string.h>
+
+#include "bus_button_config.h"
+
+#include "common.h"
+#include "rws_config.h"
+#include "Camera.h"
+#include "Lrf.h"
+#include "hal/hal_bus.h"
+
+/*** Internal Const Values, Macros ***/
+#if DEBUG_BUS==1
+#	define LOG(str, ...) printf("[%ld TBus:%d] " str, osKernelSysTick(), __LINE__, ##__VA_ARGS__)
+#	define LOG_E(str, ...) printf("[TBus_Err:%d] " str, __LINE__, ##__VA_ARGS__)
+#else
+#	define LOG(str, ...)
+#	define LOG_E(str, ...)
+#endif	//if DEBUG_BUS==1
+
+void t_bus_send(void const *argument)
+{
+	/* USER CODE BEGIN t_bus_send */
+	uint16_t managerNotif = T_Bus_Send_id;
+	static Camera_t _cam = { .busy = 0 };
+	static Lrf_t _lrf = { .busy = 0 };
+
+	*(uint8_t*) &_cam.command = 0;
+	*(uint8_t*) &_cam.state = 0;
+	*(uint8_t*) &_lrf.command = 0;
+
+	_lrf.state.lrf_enable = 0;
+	_lrf.state.value.counter = _lrf.state.value.d[0] = _lrf.state.value.d[1] =
+			_lrf.state.value.d[2] = 0;
+
+	LOG("S: created!\r\n");
+	osDelay(4);
+
+	/* Infinite loop */
+	uint32_t PreviousWakeTime;
+	uint8_t data[64];
+	for ( ;; ) {
+		osDelayUntil(&PreviousWakeTime, 100);
+
+		/* get value from mutex */
+		if (cam_read(&_cam, 10) == osOK)
+			data[0] = *(uint8_t*) &_cam.state;
+
+		if (lrf_read(&_lrf, 10) == osOK) {
+			data[1] = _lrf.state.value.counter;
+			for ( int i = 0; i < 3; i++ ) {
+				data[2 + (i * 2)] = _lrf.state.value.d[i] >> 8;
+				data[3 + (i * 2)] = _lrf.state.value.d[i] & 0xFF;
+			}
+		}
+
+		/* Start the Transmission process */
+		hal_bus_send(data);
+		/* send notif to task manager that this thread is still running */
+		osMessagePut(opt_get_queue(Q_MANAGER_NOTIF), managerNotif, 0);
+	}
+	/* USER CODE END t_bus_send */
+}
+
+void t_bus_recv(void const *argument)
+{
+	/* USER CODE BEGIN t_bus_recv */
+	static Camera_t _cam = { .busy = 0 };
+	static Lrf_t _lrf = { .busy = 0 };
+	uint16_t managerNotif = T_Bus_Recv_id;
+
+	*(uint8_t*) &_cam.command = 0;
+	*(uint8_t*) &_cam.state = 0;
+	*(uint8_t*) &_lrf.command = 0;
+	_lrf.state.value.counter = _lrf.state.value.d[0] = _lrf.state.value.d[1] =
+			_lrf.state.value.d[2] = 0;
+
+	LOG("R created!\r\n");
+
+	hal_bus_init();
+	osDelay(1);
+
+	/* Infinite loop */
+	for ( ;; ) {
+		/* get message from the queue */
+		osEvent event = osMailGet(opt_get_bus_mail(), BUS_MAX_TIMEOUT);
+		if (event.status == osEventMail) {
+			/* create buffer pointer to hold queue value */
+			Bus_Rx_Buffer_t *pRMail;
+			pRMail = event.value.p;
+			/* TODO recv panel command*/
+			/* send new command to camera */
+			if ((*(uint8_t*) &_cam.command != pRMail->data[1]) && (cam_is_busy() == 0)) {
+				LOG("new cam cmd: 0x%X x 0x%X\r\n", pRMail->data[1], *(uint8_t* ) &_cam.command);
+
+				osMessagePut(opt_get_queue(Q_CAMERA_NOTIF), pRMail->data[1], 0);
+				*(uint8_t*) &_cam.command = pRMail->data[1];
+			}
+
+			if ((*(uint8_t*) &_lrf.command != pRMail->data[3]) && (lrf_is_busy() == 0)) {
+				LOG("new lrf cmd: 0x%X x 0x%X\r\n", pRMail->data[3], *(uint8_t* ) &_lrf.command);
+
+				osMessagePut(opt_get_queue(Q_LRF_NOTIF), pRMail->data[3], 0);
+				*(uint8_t*) &_lrf.command = pRMail->data[3];
+			}
+
+			/* free memory allocated for mail */
+			osMailFree(opt_get_bus_mail(), pRMail);
+			/* toggle led indicator */
+			HAL_GPIO_TogglePin(LED_BUILTIN_GPIO_Port, LED_BUILTIN_Pin);
+		}
+		else if (event.status == osEventTimeout)
+			HAL_GPIO_WritePin(LED_BUILTIN_GPIO_Port, LED_BUILTIN_Pin, GPIO_PIN_SET);
+
+		/* send notif to task manager that this thread is still running */
+		osMessagePut(opt_get_queue(Q_MANAGER_NOTIF), managerNotif, 0);
+	}
+	/* USER CODE END t_bus_recv */
+}
+
