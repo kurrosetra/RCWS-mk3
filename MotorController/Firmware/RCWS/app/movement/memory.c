@@ -16,7 +16,7 @@
 #	define LOG_E(str, ...)
 #endif	//if DEBUG_MOTOR_MEMORY==1
 
-static const uint32_t MEMORY_UPDATE_TIMEOUT = 25;
+static const uint32_t MEMORY_UPDATE_TIMEOUT = MOTOR_UPDATE_TIMEOUT;
 
 void t_motor_memory(void const *argument)
 {
@@ -97,10 +97,7 @@ void t_motor_memory(void const *argument)
 			_memory_timer = HAL_GetTick() + MEMORY_UPDATE_TIMEOUT;
 
 			hal_motor_update_motor_state(&motor, 0);
-
 			_debug_motor_command_counter += hal_motor_set_speed(_memory_pan_speed, _memory_tilt_speed);
-
-//			LOG("cmd=%d,%ld,%ld\r\n", motor.tilt_command.power_enable,motor.pan_command.spd_man_in_c, motor.tilt_command.spd_man_in_c);
 		}
 
 		if (_debug_send_timer <= HAL_GetTick()) {

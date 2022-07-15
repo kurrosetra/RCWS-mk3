@@ -36,6 +36,7 @@ typedef struct
 } Motor_control_t;
 
 Motor_control_t mc;
+const uint32_t DELAY_BETWEEN_NODE_in_ms = 1;
 
 /* init motor */
 HAL_StatusTypeDef hal_motor_init(const uint8_t enable)
@@ -229,7 +230,7 @@ uint8_t hal_motor_set_position(const int32_t pan_pos_in_c, const int32_t tilt_po
 	}
 
 	if (is_motor_az_enable(mc.mtr_enable) && is_motor_el_enable(mc.mtr_enable))
-		HAL_Delay(3);
+		HAL_Delay(DELAY_BETWEEN_NODE_in_ms);
 
 	if (is_motor_el_enable(mc.mtr_enable)) {
 		if (Ingenia_getDecodedStatusWord2(mc.mtrEle.statusword) == STATUS_OPERATION_ENABLED) {
@@ -265,7 +266,7 @@ uint8_t hal_motor_set_speed(const int32_t pan_speed, const int32_t tilt_speed)
 	}
 
 	if (is_motor_az_enable(mc.mtr_enable) && is_motor_el_enable(mc.mtr_enable))
-		osDelay(3);
+		HAL_Delay(DELAY_BETWEEN_NODE_in_ms);
 
 	if (is_motor_el_enable(mc.mtr_enable)) {
 		if (Ingenia_getDecodedStatusWord2(mc.mtrEle.statusword) == STATUS_OPERATION_ENABLED) {

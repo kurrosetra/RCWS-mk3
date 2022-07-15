@@ -190,6 +190,7 @@ static uint8_t rws_mode = MOVE_MODE_MAN;
 static Homing_t homing_command = { .counter = 0, .az = 0, .el = 0, .distance = 0 };
 static uint16_t lrf_val = 1000;
 static float body_rws_pos[2] = { 0, 0 };
+static Optronik_camera_state_t opt_cam_state;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -382,8 +383,8 @@ int main(void)
 		if (bus.rx_opt_cam.counter != opt_cam_counter) {
 			opt_cam_counter = bus.rx_opt_cam.counter;
 
-			tem = bus.rx_opt_cam;
-			LOGBUS("opt_cam: %02X\r\n", tem.data[0]);
+			*(uint8_t*) &opt_cam_state = bus.rx_opt_cam.data[0];
+			LOGBUS("opt_cam: %02X\r\n", *(uint8_t* )&opt_cam_state);
 
 			led_state.opt_cam_state = 1;
 		}
@@ -461,7 +462,7 @@ static void manual_handler()
 	if (HAL_GetTick() >= _send_timer) {
 		_send_timer = HAL_GetTick() + 50;
 
-		if (rws_mode == MOVE_MODE_MAN) {
+		if ((rws_mode == MOVE_MODE_MAN) || (rws_mode == MOVE_MODE_TRAVEL) || (rws_mode == MOVE_MODE_STAB)) {
 			if (p0.motorEnable == 1) {
 				p.i32 = JRight.az;
 				t.i32 = JRight.el;
@@ -555,7 +556,6 @@ static void homing_handler()
 
 static void memory_handler()
 {
-//	static uint8_t prev_rws_mode = MOVE_MODE_MAN;
 	static uint32_t memory_send_timer = 0;
 	static uint8_t memory_button = 0;
 	uint8_t _activate_button = 0;
@@ -567,8 +567,6 @@ static void memory_handler()
 		memory_button = _activate_button;
 
 		if (memory_button != 0) {
-//				if ((rws_mode == MOVE_MODE_MAN) || (rws_mode == MOVE_MODE_TRACK)) {
-//				prev_rws_mode = rws_mode;
 			if (rws_mode == MOVE_MODE_MAN) {
 				p0.movementMode = MOVE_MODE_MEMORY;
 				p0.motorEnable = 1;
@@ -596,27 +594,88 @@ static void memory_handler()
 
 }
 
+static void track_handler()
+{
+	static uint8_t prev_rws_mode = MOVE_MODE_MAN;
+	static uint32_t track_send_timer = 0;
+	static uint8_t track_button = 0;
+	uint8_t _activate_button = 0;
+	uint8_t trk_id = 0;
+	int16_t trk_x = 0, trk_y = 0;
+
+	if ((JRight.button.deadman | JLeft.button.deadman) && JLeft.button.aButton)
+		_activate_button = 1;
+
+	if (track_button != _activate_button) {
+		track_button = _activate_button;
+
+		if (track_button != 0) {
+			if ((rws_mode == MOVE_MODE_MAN) || (rws_mode == MOVE_MODE_STAB) || (rws_mode == MOVE_MODE_TRAVEL)) {
+				prev_rws_mode = rws_mode;
+				p0.movementMode = MOVE_MODE_TRACK;
+				p0.motorEnable = 1;
+
+				tracker_init();
+				track_send_timer = HAL_GetTick();
+				rws_mode = MOVE_MODE_TRACK;
+			}
+			else if (rws_mode == MOVE_MODE_TRACK) {
+				track_send_timer = 0;
+				rws_mode = prev_rws_mode;
+			}
+		}
+	}
+
+	if (rws_mode != MOVE_MODE_TRACK)
+		track_send_timer = 0;
+
+	if (track_send_timer > 0) {
+		if (HAL_GetTick() >= track_send_timer) {
+			track_send_timer = HAL_GetTick() + 100;
+
+			if (tracker_read(&trk_id, &trk_x, &trk_y) == HAL_OK) {
+				bus.tx_track.data[0] = *(uint8_t*) &opt_cam_state;
+				bus.tx_track.data[1] = (trk_x >> 8) & 0xFF;
+				bus.tx_track.data[2] = trk_x & 0xFF;
+				bus.tx_track.data[3] = (trk_y >> 8) & 0xFF;
+				bus.tx_track.data[4] = trk_y & 0xFF;
+
+				bus_send(&bus.tx_track);
+			}
+		}
+	}
+}
+
 static void move_handler()
 {
 	static uint32_t _update_sla_timer = 0;
 	uint16_t bufLen = 0;
 	char buf[RING_BUFFER_TX_SIZE];
+	char mode_buf[32];
 
 	manual_handler();
 	homing_handler();
 	memory_handler();
+	track_handler();
 
 	if (HAL_GetTick() >= _update_sla_timer) {
 		_update_sla_timer = HAL_GetTick() + 1000;
 
-		if (rws_mode == MOVE_MODE_MAN) {
-			bufLen = sprintf(buf, "$DISPSTR,1,5,30,MANUAL MODE*");
-			serial_write_str(&pcE, buf, bufLen);
-		}
-		else if (rws_mode == MOVE_MODE_HOMING) {
-			bufLen = sprintf(buf, "$DISPSTR,1,5,30,HOMING MODE*");
-			serial_write_str(&pcE, buf, bufLen);
-		}
+		if (rws_mode == MOVE_MODE_HOMING)
+			sprintf(mode_buf, "HOMING MODE");
+		else if (rws_mode == MOVE_MODE_TRACK)
+			sprintf(mode_buf, "TRACK MODE");
+		else if (rws_mode == MOVE_MODE_STAB)
+			sprintf(mode_buf, "STAB MODE");
+		else if (rws_mode == MOVE_MODE_TRAVEL)
+			sprintf(mode_buf, "TRAVEL MODE");
+		else if (rws_mode == MOVE_MODE_MEMORY)
+			sprintf(mode_buf, "MEMORY MODE");
+		else
+			sprintf(mode_buf, "MANUAL MODE");
+
+		bufLen = sprintf(buf, "$DISPSTR,1,5,30,%s*", mode_buf);
+		sla_print_text(buf, bufLen);
 	}
 }
 
@@ -945,7 +1004,8 @@ static HAL_StatusTypeDef bus_init()
 	bus.tx_track.id = RWS_PANEL_TRK_ID;
 	bus.tx_balistik.id = RWS_PANEL_BAL_ID;
 	bus.tx_homing.id = RWS_PANEL_HOM_ID;
-	bus.tx_manual.datalength = bus.tx_track.datalength = bus.tx_balistik.datalength = bus.tx_homing.datalength = 8;
+	bus.tx_manual.datalength = bus.tx_balistik.datalength = bus.tx_homing.datalength = 8;
+	bus.tx_track.datalength = 5;
 
 	/* can rx buffer init */
 	bus.rx_motor_state.id = RWS_MOTOR_STATUS_ID;

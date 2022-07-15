@@ -18,6 +18,8 @@
 #define DEBUG_MOTOR_MEMORY			1
 #define DEBUG_MOTOR_HOMING			0
 
+#define MOTOR_UPDATE_TIMEOUT		25
+
 extern Motor_t motor;
 //extern uint8_t homing_state;
 //uint8_t mtr_set_power(Motor_t *mtr);

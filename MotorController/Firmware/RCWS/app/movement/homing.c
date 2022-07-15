@@ -17,7 +17,7 @@
 #	define LOG_E(str, ...)
 #endif	//if DEBUG_MOTOR_HOMING==1
 
-static const uint32_t HOMING_UPDATE_TIMEOUT = 25;
+static const uint32_t HOMING_UPDATE_TIMEOUT = MOTOR_UPDATE_TIMEOUT;
 static const uint32_t HOMING_HYST_POS = 5;
 
 void t_motor_homing(void const *argument)

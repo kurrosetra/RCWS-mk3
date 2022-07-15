@@ -12,19 +12,19 @@
 
 #define DEBUG_SLA_ENABLE		1
 
-//typedef struct
-//{
-//	uint8_t start :1;
-//	uint8_t end :1;
-//	uint8_t reservedBit :6;
-//} __attribute__ ((packed)) gsl_state_t;
-//
-//typedef struct
-//{
-//	gsl_state_t state;
-//	float startAE[2];
-//	float targetAE[2];
-//} gsl_t;
+typedef enum
+{
+	TRK_GATE_NONE = 0,
+	TRK_GATE_BIGGER = 1,
+	TRK_GATE_SMALLER = -1
+} TrackGateResize_e;
+
+typedef enum
+{
+	TRK_SEL_NONE = 0,
+	TRK_SEL_NEXT = 1,
+	TRK_SEL_PREV = -1
+} TrackSelectTarget_e;
 
 void sla_init();
 void sla_handler();
@@ -35,5 +35,13 @@ void sla_set_distance(const uint16_t d);
 uint8_t sla_gsl_available();
 void sla_gsl_get_command(uint8_t *counter, int32_t *az, int32_t *el, uint16_t *distance);
 void sla_gsl_start();
+
+void tracker_init();
+HAL_StatusTypeDef tracker_available();
+HAL_StatusTypeDef tracker_read(uint8_t *id, int16_t *dx, int16_t *dy);
+void tracker_change_gate_size(const int8_t resize);
+void tracker_change_target(const int8_t retarget);
+
+void sla_print_text(const char *str, const uint16_t len);
 
 #endif /* SLA_H_ */

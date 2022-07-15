@@ -21,7 +21,7 @@
 #	define LOG_E(str, ...)
 #endif	//if DEBUG_MOTOR_MANUAL==1
 
-static const uint32_t MANUAL_UPDATE_TIMEOUT = 25;
+static const uint32_t MANUAL_UPDATE_TIMEOUT = MOTOR_UPDATE_TIMEOUT;
 
 void t_motor_manual(void const *argument)
 {

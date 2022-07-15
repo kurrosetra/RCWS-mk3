@@ -17,7 +17,7 @@
 #	define LOG_E(str, ...)
 #endif	//if DEBUG_MOTOR_TRACK==1
 
-static const uint32_t TRACK_UPDATE_TIMEOUT = 25;
+static const uint32_t TRACK_UPDATE_TIMEOUT = MOTOR_UPDATE_TIMEOUT;
 void t_motor_track(void const *argument)
 {
 	/* USER CODE BEGIN t_motor_track */
