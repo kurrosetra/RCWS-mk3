@@ -5,19 +5,18 @@
  *      Author: 62812
  */
 
-#include <stdio.h>
-
-#include "app/common.h"
-#include "driver/weapon/kokang.h"
-#include "driver/weapon/trigger.h"
+#include "common.h"
 #include "driver/bus_fdcan/bus_fdcan.h"
-#include "driver/weapon/munisi.h"
+#include "hal/weapon/kokang.h"
+#include "hal/weapon/trigger.h"
+#include "hal/sensor/munisi.h"
 
 #if RTOS_USE_STACK_HIGH_WATER==1
 #include "task.h"
 #endif	//if RTOS_USE_STACK_HIGH_WATER==1
 
 #if DEBUG_WEAPON==1
+#include <stdio.h>
 /*** Internal Const Values, Macros ***/
 #	define LOG(str, ...) printf("[%ld TWpn:%d] " str, (osKernelSysTick()%10000UL), __LINE__, ##__VA_ARGS__)
 #	define LOG_E(str, ...) printf("[TWpn_Err:%d] " str, __LINE__, ##__VA_ARGS__)
@@ -25,10 +24,6 @@
 #	define LOG(str, ...)
 #	define LOG_E(str, ...)
 #endif	//if DEBUG_WEAPON==1
-
-#ifndef BUS_TIMEOUT
-#define BUS_TIMEOUT			300
-#endif
 
 typedef enum
 {
@@ -223,7 +218,7 @@ void t_weapon(void const *argument)
 				HAL_GPIO_WritePin(LED_BUILTIN_GPIO_Port, LED_BUILTIN_Pin, GPIO_PIN_SET);
 			}
 			else {
-				if (osKernelSysTick() >= (_bus_recv_timer + BUS_TIMEOUT)) {
+				if (osKernelSysTick() >= (_bus_recv_timer + BUS_MAX_TIMEOUT)) {
 					_bus_recv_timer = 0;
 				}
 			}

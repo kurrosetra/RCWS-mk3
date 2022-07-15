@@ -166,13 +166,9 @@ HAL_StatusTypeDef Ingenia_init(Servo_t *servo, CAN_INTERFACE_HANDLETYPE *hcan, c
 
 	Ingenia_prepare_tx_header(servo);
 
-#if INGENIA_USE_RTOS==1
-	HAL_Delay(10);
-//	Ingenia_write_nmt(servo, NMT_RESET_COMM);
-//	HAL_Delay(500);
+	HAL_Delay(1);
 	Ingenia_write_nmt(servo, NMT_START_REMOTE_NODE);
-	HAL_Delay(10);
-#endif	//if INGENIA_USE_RTOS==1
+	HAL_Delay(1);
 
 	return Ingenia_node_add(servo);
 }

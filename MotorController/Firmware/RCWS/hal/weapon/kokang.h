@@ -8,7 +8,6 @@
 #ifndef DRIVER_KOKANG_KOKANG_H_
 #define DRIVER_KOKANG_KOKANG_H_
 
-#include "main.h"
 #include "app/common.h"
 
 typedef enum

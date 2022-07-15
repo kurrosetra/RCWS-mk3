@@ -33,9 +33,10 @@ RCWS/SRC \
 RCWS/app/movement \
 RCWS/app \
 RCWS/driver/bus_fdcan \
-RCWS/driver/hal_motor \
 RCWS/driver/ingenia \
 RCWS/driver/kontrol \
 RCWS/driver/uartTerminal \
-RCWS/driver/weapon \
+RCWS/hal/motor \
+RCWS/hal/sensor \
+RCWS/hal/weapon \
 

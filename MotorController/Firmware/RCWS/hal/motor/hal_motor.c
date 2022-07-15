@@ -7,12 +7,10 @@
 
 #include <stdlib.h>
 
-#include "hal_motor.h"
 #include "fdcan.h"
 
-#include "rws_config.h"
+#include "hal_motor.h"
 #include "driver/bus_fdcan/bus_fdcan.h"
-//#include "driver/ingenia/ingenia.h"
 
 #define DEBUG_HAL_MOTOR				0
 
@@ -39,44 +37,7 @@ typedef struct
 
 Motor_control_t mc;
 
-static void motor_param_init(Servo_t *servo)
-{
-	Ingenia_write_nmt(servo, NMT_START_REMOTE_NODE);
-	uint32_t motor_pan_max_accel = (RWS_MOTOR_PAN_MAX_SPEED * 3) / 2;
-//	uint32_t motor_tilt_max_accel = (RWS_MOTOR_TILT_MAX_SPEED * 3) / 2;
-	uint32_t motor_tilt_max_accel = RWS_MOTOR_TILT_MAX_SPEED;
-
-	/* set mode to profile position */
-	Ingenia_setModeOfOperation(servo, DRIVE_MODE_PROFILE_POSITION);
-
-	LOG("mode=position mode\r\n");
-
-	if (servo->_u8Node == MTR_AZ_ID) {
-		/* set max motor speed */
-		Ingenia_write_sdo_u32(servo, 0x6080, 0, RWS_MOTOR_PAN_MAX_SPEED);
-		/* set max profile acceleration */
-		Ingenia_write_sdo_u32(servo, 0x6083, 0, motor_pan_max_accel);
-		/* set max profile de-acceleration */
-		Ingenia_write_sdo_u32(servo, 0x6084, 0, motor_pan_max_accel);
-		/* set max profile quick stop de-acceleration */
-		Ingenia_write_sdo_u32(servo, 0x6085, 0, motor_pan_max_accel * 2);
-	}
-	else if (servo->_u8Node == MTR_EL_ID) {
-		/* set max motor speed */
-		Ingenia_write_sdo_u32(servo, 0x6080, 0, RWS_MOTOR_TILT_MAX_SPEED);
-		/* set max profile acceleration */
-		Ingenia_write_sdo_u32(servo, 0x6083, 0, motor_tilt_max_accel);
-		/* set max profile de-acceleration */
-		Ingenia_write_sdo_u32(servo, 0x6084, 0, motor_tilt_max_accel);
-		/* set max profile quick stop de-acceleration */
-		Ingenia_write_sdo_u32(servo, 0x6085, 0, motor_tilt_max_accel * 2);
-	}
-
-	/* set TPDO4 event timer */
-	Ingenia_write_sdo_u16(servo, 0x1803, 10, 20);
-
-}
-
+/* init motor */
 HAL_StatusTypeDef hal_motor_init(const uint8_t enable)
 {
 	LOG("Motor init...\r\n");
@@ -94,11 +55,7 @@ HAL_StatusTypeDef hal_motor_init(const uint8_t enable)
 		if (Ingenia_init(&mc.mtrAzi, mc.hfdcan, MTR_AZ_ID) != HAL_OK) {
 			LOG("init MTR_AZI failed!\r\n");
 			return HAL_ERROR;
-		}
-
-		LOG("pan param init...\r\n");
-		motor_param_init(&mc.mtrAzi);
-		LOG("done!\r\n");
+		}LOG("done!\r\n");
 	}
 
 	if (is_motor_el_enable(mc.mtr_enable)) {
@@ -110,8 +67,6 @@ HAL_StatusTypeDef hal_motor_init(const uint8_t enable)
 		else
 			LOG("tilt node=0x%02X\r\n", mc.mtrEle._u8Node);
 
-		LOG("tilt param init\r\n");
-		motor_param_init(&mc.mtrEle);
 		LOG("done!\r\n");
 	}
 
@@ -150,7 +105,10 @@ HAL_StatusTypeDef hal_motor_init(const uint8_t enable)
 				break;
 			else {
 				for ( int i = 0; i < 300; i++ ) {
+#if DEBUG_HAL_MOTOR==1
 					printf(".");
+#endif	//if DEBUG_HAL_MOTOR==1
+
 					osDelay(50);
 					if (is_motor_az_enable(mc.mtr_enable)) {
 						/* get statusword from can interrupt */
@@ -179,7 +137,9 @@ HAL_StatusTypeDef hal_motor_init(const uint8_t enable)
 
 			osDelay(100);
 		}
+#if DEBUG_HAL_MOTOR==1
 		printf("\r\n");
+#endif	//if DEBUG_HAL_MOTOR==1
 	}
 
 	LOG("Motor Ready!\r\n");
@@ -244,8 +204,7 @@ void hal_motor_set_pan_power(const uint8_t act)
 			Ingenia_enableMotor(&mc.mtrAzi);
 		else
 			Ingenia_disableMotor(&mc.mtrAzi);
-	}
-	LOG("\r\nPAN_power: %d\r\n\r\n", act);
+	}LOG("\r\nPAN_power: %d\r\n\r\n", act);
 }
 
 void hal_motor_set_tilt_power(const uint8_t act)
@@ -255,8 +214,7 @@ void hal_motor_set_tilt_power(const uint8_t act)
 			Ingenia_enableMotor(&mc.mtrEle);
 		else
 			Ingenia_disableMotor(&mc.mtrEle);
-	}
-	LOG("\r\nTILT_power: %d\r\n\r\n", act);
+	}LOG("\r\nTILT_power: %d\r\n\r\n", act);
 }
 
 uint8_t hal_motor_set_position(const int32_t pan_pos_in_c, const int32_t tilt_pos_in_c)
@@ -511,6 +469,7 @@ void Ingenia_tpdo_callback(CAN_Buffer_t *buffer)
 	}
 }
 
+#if DEBUG_HAL_MOTOR==1
 void Ingenia_nmt_callback(CAN_Buffer_t *buffer)
 {
 	CAN_Data_t data;
@@ -525,4 +484,5 @@ void Ingenia_nmt_callback(CAN_Buffer_t *buffer)
 		printf("\r\n");
 	}
 }
+#endif	//if DEBUG_HAL_MOTOR==1
 

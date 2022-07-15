@@ -19,7 +19,7 @@
 
 #	define DEBUG_MANAGER			0
 #	define DEBUG_BUS				0
-#	define DEBUG_MOTOR				1
+#	define DEBUG_MOTOR				0
 #	define DEBUG_WEAPON				0
 #	define DEBUG_IMU				0
 #endif	//if DEBUG_ENABLE==1
@@ -27,6 +27,8 @@
 void reset_source_init();
 uint8_t get_reset_cause();
 void main_c_init();
+
+uint8_t mtr_get_movement_mode();
 
 osMessageQId opt_get_queue(const Queue_ID qID);
 osMailQId mtr_get_mail(const Mail_ID id);

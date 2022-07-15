@@ -4,20 +4,16 @@
  *  Created on: Jul 12, 2022
  *      Author: 62812
  */
-#include <stdio.h>
 #include <stdlib.h>
 
 #include "t_motor.h"
-#include "driver/hal_motor/hal_motor.h"
-#include "rws_config.h"
-
-#include "iwdg.h"
 
 #if RTOS_USE_STACK_HIGH_WATER==1
 #include "task.h"
 #endif	//if RTOS_USE_STACK_HIGH_WATER==1
 
 #if DEBUG_MOTOR==1
+#include <stdio.h>
 /*** Internal Const Values, Macros ***/
 #	define LOG(str, ...) printf("[%ld TMtr:%d] " str, (osKernelSysTick()%100000UL), __LINE__, ##__VA_ARGS__)
 #	define LOG_E(str, ...) printf("[TMtr_Err:%d] " str, __LINE__, ##__VA_ARGS__)
@@ -74,7 +70,6 @@ void t_motor(void const *argument)
 		osDelay(3000);
 	t_motor_init();
 	osMutexRelease(mtr_get_mutex(Mutex_Motor_id));
-	motor.mode_state.movementMode = MOVE_MODE_MAN;
 	t_motor_ext_revive_task(MOVE_MODE_MAN);
 
 	/* create manual task */
@@ -104,7 +99,7 @@ void t_motor(void const *argument)
 
 					if (pRMail->param.mode.modeAbort == 1)
 						motor.mode_command.movementMode = MOVE_MODE_MAN;
-					if (motor.mode_state.movementMode != motor.mode_command.movementMode)
+					if (mtr_get_movement_mode() != motor.mode_command.movementMode)
 						ext_mail->param.mode.ready_to_be_terminated = 1;
 					ext_mail->param.mode.motor_enable = pRMail->param.mode.motorEnable;
 					ext_mail->param.mode.balistic_active = pRMail->param.mode.ballisticActive;
@@ -249,5 +244,10 @@ static void mtr_send_to_bus()
 
 	/* send mail queue*/
 	osMailPut(mtr_get_mail(Mail_Bus_id), pos_mail);
+}
+
+uint8_t mtr_get_movement_mode()
+{
+	return motor.mode_state.movementMode;
 }
 

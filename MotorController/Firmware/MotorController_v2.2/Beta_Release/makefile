@@ -9,11 +9,12 @@ RM := rm -rf
 
 # All of the sources participating in the build are defined here
 -include sources.mk
--include RCWS/driver/weapon/subdir.mk
+-include RCWS/hal/weapon/subdir.mk
+-include RCWS/hal/sensor/subdir.mk
+-include RCWS/hal/motor/subdir.mk
 -include RCWS/driver/uartTerminal/subdir.mk
 -include RCWS/driver/kontrol/subdir.mk
 -include RCWS/driver/ingenia/subdir.mk
--include RCWS/driver/hal_motor/subdir.mk
 -include RCWS/driver/bus_fdcan/subdir.mk
 -include RCWS/app/movement/subdir.mk
 -include RCWS/app/subdir.mk

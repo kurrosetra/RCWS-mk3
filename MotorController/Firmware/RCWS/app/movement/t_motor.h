@@ -8,9 +8,8 @@
 #ifndef APP_MOVEMENT_T_MOTOR_H_
 #define APP_MOVEMENT_T_MOTOR_H_
 
-#include "rws_config.h"
 #include "app/common.h"
-#include "driver/hal_motor/hal_motor.h"
+#include "hal/motor/hal_motor.h"
 
 #define DEBUG_MOTOR_MANUAL			0
 #define DEBUG_MOTOR_TRAVEL			1

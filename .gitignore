@@ -58,7 +58,18 @@ Test/
 Drivers/
 Debug/
 Startup/
+Debug/
+DEBUG/
+Beta_Release/
 
 ~*
 *.PcbDocPreview
 *.lck
+MotorController/Firmware/MotorController_v2.2/Beta_Release/makefile
+MotorController/Firmware/MotorController_v2.2/Beta_Release/makefile
+MotorController/Firmware/MotorController_v2.2/Beta_Release/MotorController_v2.2.bin
+MotorController/Firmware/MotorController_v2.2/Beta_Release/MotorController_v2.2.list
+MotorController/Firmware/MotorController_v2.2/Beta_Release/objects.list
+MotorController/Firmware/MotorController_v2.2/Beta_Release/RCWS/driver/hal_motor/subdir.mk
+MotorController/Firmware/MotorController_v2.2/Beta_Release/RCWS/driver/weapon/subdir.mk
+MotorController/Firmware/MotorController_v2.2/Beta_Release/sources.mk

@@ -5,12 +5,10 @@
  *      Author: 62812
  */
 
-#include "bus_fdcan.h"
 #include "fdcan.h"
 
 #include "app/common.h"
-#include "rws_config.h"
-#include "app/movement/t_motor.h"
+#include "bus_fdcan.h"
 
 #if DEBUG_BUS==1
 #include <stdio.h>
@@ -137,7 +135,7 @@ void bus_rx_callback(BUS_Rx_Buffer_t *buffer)
 		if (osMutexWait(mtr_get_mutex(Mutex_Motor_id), 0) == osOK) {
 			osMutexRelease(mtr_get_mutex(Mutex_Motor_id));
 
-			if (motor.mode_state.movementMode == MOVE_MODE_TRACK) {
+			if (mtr_get_movement_mode() == MOVE_MODE_TRACK) {
 				LOG("send trk_cmd\r\n");
 				MAIL_Motor_Ext_t *mtrExtMail;
 				/* allocate memory; receiver must be free it */
@@ -166,7 +164,7 @@ void bus_rx_callback(BUS_Rx_Buffer_t *buffer)
 			osMutexRelease(mtr_get_mutex(Mutex_Motor_id));
 			LOG("send mtr_cmd\r\n");
 
-			uint8_t motor_mode = motor.mode_state.movementMode;
+			uint8_t motor_mode = mtr_get_movement_mode();
 			if ((motor_mode == MOVE_MODE_MAN) || (motor_mode == MOVE_MODE_TRAVEL) || (motor_mode == MOVE_MODE_STAB)
 					|| (motor_mode == MOVE_MODE_HOMING)) {
 				MAIL_Motor_Ext_t *mtrExtMail;

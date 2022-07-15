@@ -9,6 +9,7 @@
 #define APP_COMMON_MESSAGE_H_
 
 #include "rws_command_state.h"
+#include "rws_config.h"
 
 typedef enum
 {

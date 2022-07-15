@@ -7,18 +7,15 @@
 
 #include "fdcan.h"
 
-#include <stdio.h>
 #include <string.h>
 
-#include "app/common.h"
 #include "driver/uartTerminal/uartTerminal.h"
-#include "app/common.h"
 #include "driver/bus_fdcan/bus_fdcan.h"
 #include "driver/ingenia/ingenia.h"
-#include "driver/weapon/trigger.h"
-#include "driver/hal_motor/hal_motor.h"
+#include "hal/motor/hal_motor.h"
 
 #if DEBUG_ENABLE==1
+#include <stdio.h>
 /*** Internal Const Values, Macros ***/
 #	define LOG(str, ...) printf("[%ld %s:%d] " str, HAL_GetTick(), __FILE_NAME__, __LINE__, ##__VA_ARGS__)
 #	define LOG_E(str, ...) printf("[%s Err:%d] " str, __FILE_NAME__, __LINE__, ##__VA_ARGS__)

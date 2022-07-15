@@ -9,7 +9,6 @@
 #include <string.h>
 
 #include "common.h"
-#include "rws_config.h"
 #include "driver/bus_fdcan/bus_fdcan.h"
 
 #if RTOS_USE_STACK_HIGH_WATER==1

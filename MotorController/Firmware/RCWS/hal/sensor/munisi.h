@@ -8,7 +8,7 @@
 #ifndef DRIVER_WEAPON_MUNISI_H_
 #define DRIVER_WEAPON_MUNISI_H_
 
-#include "main.h"
+#include "app/common.h"
 
 void munisi_reset();
 uint16_t munisi_get_counter();
