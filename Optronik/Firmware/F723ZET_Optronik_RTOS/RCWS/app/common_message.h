@@ -8,7 +8,7 @@
 #ifndef APP_COMMON_MESSAGE_H_
 #define APP_COMMON_MESSAGE_H_
 
-#include "bus_button_config.h"
+#include "rws_command_state.h".h"
 
 typedef enum
 {
@@ -67,7 +67,7 @@ typedef struct
 
 typedef struct
 {
-	Panel_lrf_imu_command_t command;
+	Panel_lrf_command_t command;
 	Lrf_State_t state;
 	uint8_t busy;
 } Lrf_t;

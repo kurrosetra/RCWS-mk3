@@ -73,7 +73,7 @@ void t_lrf(void const *argument)
 
 	/* Infinite loop */
 	for ( ;; ) {
-		Panel_lrf_imu_command_t notif;
+		Panel_lrf_command_t notif;
 		osEvent event = osMessageGet(opt_get_queue(Q_LRF_NOTIF), 1000);
 		if (event.status == osEventMessage) {
 			*(uint8_t*) &notif = (uint8_t) event.value.v;

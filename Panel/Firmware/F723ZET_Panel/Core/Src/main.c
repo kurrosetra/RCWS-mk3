@@ -34,7 +34,7 @@
 #include <math.h>
 
 #include "bus_can.h"
-#include "bus_button_config.h"
+#include "button.h"
 
 #include "sla.h"
 /* USER CODE END Includes */
@@ -83,6 +83,7 @@ typedef struct
 	Bus_Rx_Buffer_t rx_motor_state;
 	Bus_Rx_Buffer_t rx_motor_position;
 	Bus_Rx_Buffer_t rx_motor_imu;
+	Bus_Rx_Buffer_t rx_weapon_state;
 
 	Bus_Rx_Buffer_t rx_opt_lrf;
 	Bus_Rx_Buffer_t rx_opt_cam;
@@ -177,11 +178,11 @@ uint32_t adcVal[5];
 volatile uint8_t adcConvCompleted = 0;
 volatile uint8_t can_completed = 0;
 
-static Panel_motor_mode_t p0;
+static Panel_motor_command_t p0;
 static Panel_weapon_command_t p1;
 static uint16_t shoot_limit = 0;
 static Panel_camera_command_t p4;
-static Panel_lrf_imu_command_t p5;
+static Panel_lrf_command_t p5;
 
 volatile uint32_t trig_timer = 0;
 static led_state_t led_state;
@@ -323,7 +324,7 @@ int main(void)
 			button_update();
 
 			/* TODO change move mode  */
-			p0.moveMode = rws_mode;
+			p0.movementMode = rws_mode;
 			bus.tx_command.data[0] = *(uint8_t*) &p0;
 			bus.tx_command.data[1] = *(uint8_t*) &p1;
 			bus.tx_command.data[2] = shoot_limit >> 8;
@@ -349,10 +350,10 @@ int main(void)
 #endif	//if DEBUG_BUS==1
 
 			if (rws_mode == MOVE_MODE_HOMING) {
-				Body_motor_mode_t i0;
+				Body_movement_mode_t i0;
 				*(uint8_t*) &i0 = tem.data[0];
 
-				if (i0.moveModeEnded == 1)
+				if (i0.moveModeEnd == 1)
 					rws_mode = MOVE_MODE_MAN;
 			}
 
@@ -490,7 +491,7 @@ static void homing_handler()
 	uint8_t _button = 0;
 	Rws_Union_u a, e;
 
-	if ((JRight.button.deadman | JLeft.button.deadman) && JLeft.button.bButton)
+	if ((JRight.button.deadman | JLeft.button.deadman) && JRight.button.aButton)
 		_button = 1;
 
 	if (sla_gsl_available() > 0) {
@@ -525,7 +526,7 @@ static void homing_handler()
 				LOGSLA("HOMING STARTED!\r\nHoming=%ld,%ld,%d\r\n", homing_command.az, homing_command.el,
 						homing_command.distance);
 
-				p0.moveMode = MOVE_MODE_HOMING;
+				p0.movementMode = MOVE_MODE_HOMING;
 				p0.motorEnable = 1;
 				homing_send_timer = HAL_GetTick();
 				rws_mode = MOVE_MODE_HOMING;
@@ -539,7 +540,7 @@ static void homing_handler()
 		homing_button = _button;
 	}
 
-	if (rws_mode == MOVE_MODE_MAN)
+	if (rws_mode != MOVE_MODE_HOMING)
 		homing_send_timer = 0;
 
 	if (homing_send_timer > 0) {
@@ -548,6 +549,48 @@ static void homing_handler()
 
 			bus_send(&bus.tx_homing);
 			LOGSLA("body pos=%.1f,%.3f\r\n", body_rws_pos[0], body_rws_pos[1]);
+		}
+	}
+}
+
+static void memory_handler()
+{
+//	static uint8_t prev_rws_mode = MOVE_MODE_MAN;
+	static uint32_t memory_send_timer = 0;
+	static uint8_t memory_button = 0;
+	uint8_t _activate_button = 0;
+
+	if ((JRight.button.deadman | JLeft.button.deadman) && JLeft.button.bButton)
+		_activate_button = 1;
+
+	if (memory_button != _activate_button) {
+		memory_button = _activate_button;
+
+		if (memory_button != 0) {
+//				if ((rws_mode == MOVE_MODE_MAN) || (rws_mode == MOVE_MODE_TRACK)) {
+//				prev_rws_mode = rws_mode;
+			if (rws_mode == MOVE_MODE_MAN) {
+				p0.movementMode = MOVE_MODE_MEMORY;
+				p0.motorEnable = 1;
+
+				memory_send_timer = HAL_GetTick();
+				rws_mode = MOVE_MODE_MEMORY;
+			}
+		}
+		else {
+			/* back to manual mode */
+			rws_mode = MOVE_MODE_MAN;
+		}
+	}
+
+	if (rws_mode != MOVE_MODE_MEMORY)
+		memory_send_timer = 0;
+
+	if (memory_send_timer > 0) {
+		if (HAL_GetTick() >= memory_send_timer) {
+			memory_send_timer = HAL_GetTick() + 100;
+
+			bus_send(&bus.tx_manual);
 		}
 	}
 
@@ -561,6 +604,7 @@ static void move_handler()
 
 	manual_handler();
 	homing_handler();
+	memory_handler();
 
 	if (HAL_GetTick() >= _update_sla_timer) {
 		_update_sla_timer = HAL_GetTick() + 1000;
@@ -842,7 +886,6 @@ static void js_update()
 	adc_joystick_conversion(&JRight, adcVal[0], adcVal[1]);
 	adc_joystick_conversion(&JLeft, adcVal[2], adcVal[3]);
 	/* TODO JOYSTICK LEFT is broken */
-
 
 	LOGBTN("JSR=%02X,%ld,%ld JSL=%02X,%ld,%ld\r\n", *(uint8_t* ) &JRight.button, JRight.az, JRight.el,
 			*(uint8_t* ) &JLeft.button, JLeft.az, JLeft.el);

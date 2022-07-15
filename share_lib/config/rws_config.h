@@ -28,6 +28,7 @@
 #define 	RWS_MOTOR_STATUS_ID				0x121
 #define 	RWS_MOTOR_POS_ID				0x122
 #define 	RWS_MOTOR_IMU_ID				0x123
+#define 	RWS_WEAPON_STATUS_ID			0x124
 #define RWS_OPTRONIK_ID					0x130
 #define 	RWS_OPTRONIK_LRF_ID				0x131
 #define 	RWS_OPTRONIK_CAM_ID				0x132
