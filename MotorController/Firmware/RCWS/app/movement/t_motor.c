@@ -63,8 +63,8 @@ void t_motor(void const *argument)
 	osMutexWait(mtr_get_mutex(Mutex_Motor_id), osWaitForever);
 	/* TODO Select which motor to be activated */
 	motor.enable = 0;
-//	motor.enable |= MTR_AZ_ENABLE;
-	motor.enable |= MTR_EL_ENABLE;
+	motor.enable |= MTR_AZ_ENABLE;
+//	motor.enable |= MTR_EL_ENABLE;
 
 	if (get_reset_cause() == RESET_CAUSE_EXTERNAL_RESET_PIN_RESET)
 		osDelay(3000);
@@ -87,8 +87,8 @@ void t_motor(void const *argument)
 			switch (pRMail->sender_id)
 			{
 			case Motor_Sender_Bus_Mode_id:
-				LOG("[I]cmd=%02X;st=%02X;rst=%d\r\n", *(uint8_t* )&pRMail->param.mode, *(uint8_t* )&motor.mode_state,
-						get_reset_cause());
+//				LOG("[I]cmd=%02X;st=%02X;rst=%d\r\n", *(uint8_t* )&pRMail->param.mode, *(uint8_t* )&motor.mode_state,
+//						get_reset_cause());
 				motor.mode_command.movementMode = pRMail->param.mode.movementMode;
 
 				if (osMutexWait(mtr_get_mutex(Mutex_motor_ext_id), 0) == osOK) {
@@ -239,8 +239,8 @@ static void mtr_send_to_bus()
 	pos_mail->param.motor.position.pan = motor.pan_state.pos;
 	pos_mail->param.motor.position.tilt = motor.tilt_state.pos;
 
-	LOG("st=%02X;PT=%ld,%ld\r\n", *(uint8_t* )&motor.mode_state, pos_mail->param.motor.position.pan,
-			pos_mail->param.motor.position.tilt);
+//	LOG("st=%02X;PT=%ld,%ld\r\n", *(uint8_t* )&motor.mode_state, pos_mail->param.motor.position.pan,
+//			pos_mail->param.motor.position.tilt);
 
 	/* send mail queue*/
 	osMailPut(mtr_get_mail(Mail_Bus_id), pos_mail);

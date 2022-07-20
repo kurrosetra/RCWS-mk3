@@ -179,7 +179,7 @@ typedef struct
 
 		struct
 		{
-			Optronik_camera_state_t trk_state;
+			Optronik_camera_state_t cam_state;
 			int16_t trk_x;
 			int16_t trk_y;
 		} track;

@@ -62,11 +62,11 @@ void t_motor_manual(void const *argument)
 					/* free memory allocated for mail */
 					osMailFree(mtr_get_mail(Mail_Motor_Ext_id), pRMail);
 
-					/* stop motor */
-					hal_motor_set_pan_power(0);
-					motor.pan_state.power = 0;
-					hal_motor_set_tilt_power(0);
-					motor.tilt_state.power = 0;
+//					/* stop motor */
+//					hal_motor_set_pan_power(0);
+//					motor.pan_state.power = 0;
+//					hal_motor_set_tilt_power(0);
+//					motor.tilt_state.power = 0;
 
 					/* send ack to t_motor */
 					/* allocate memory; receiver must be free it */
@@ -119,6 +119,8 @@ void t_motor_manual(void const *argument)
 			motor.tilt_command.power_enable = 0;
 			motor.tilt_command.spd_man_in_c = 0;
 			motor.tilt_command.pos_bal_in_c = 0;
+
+			LOG("timeout\r\n\r\n");
 		}
 
 		if (HAL_GetTick() >= _mtr_update_timer) {
@@ -136,8 +138,9 @@ void t_motor_manual(void const *argument)
 		if (_debug_send_timer <= HAL_GetTick()) {
 			_debug_send_timer = HAL_GetTick() + 1000;
 
-			LOG("[%d]in c= %ld,%ld\r\n", _debug_motor_command_counter, motor.pan_command.spd_man_in_c,
-					motor.tilt_command.spd_man_in_c);
+//			LOG("[%d]in c= %ld,%ld\r\n", _debug_motor_command_counter, motor.pan_command.spd_man_in_c,
+//					motor.tilt_command.spd_man_in_c);
+//			LOG("[%d]spd in c= %ld,%ld\r\n", _debug_motor_command_counter, motor.pan_state.speed, motor.tilt_state.speed);
 			_debug_motor_command_counter = 0;
 		}
 

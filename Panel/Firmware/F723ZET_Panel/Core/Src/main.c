@@ -486,7 +486,7 @@ static void manual_handler()
 
 static void homing_handler()
 {
-	static uint8_t gsl_counter = 0xFF;
+	static uint8_t gsl_counter = 0;
 	static uint32_t homing_send_timer = 0;
 	static uint8_t homing_button = 0;
 	uint8_t _button = 0;
@@ -740,9 +740,9 @@ static void button_init()
 	JRight.raw_mid = 950;
 	JRight.raw_min = 740;
 	JRight.raw_max = 1150;
-	JLeft.raw_mid = 1300;
-	JLeft.raw_min = 1000;
-	JLeft.raw_max = 1600;
+	JLeft.raw_mid = 965;
+	JLeft.raw_min = 750;
+	JLeft.raw_max = 1200;
 
 	*(uint8_t*) &JRight.button = 0;
 	*(uint8_t*) &JLeft.button = 0;

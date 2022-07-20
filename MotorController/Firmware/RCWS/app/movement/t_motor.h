@@ -11,7 +11,7 @@
 #include "app/common.h"
 #include "hal/motor/hal_motor.h"
 
-#define DEBUG_MOTOR_MANUAL			0
+#define DEBUG_MOTOR_MANUAL			1
 #define DEBUG_MOTOR_TRAVEL			1
 #define DEBUG_MOTOR_STAB			1
 #define DEBUG_MOTOR_TRACK			1

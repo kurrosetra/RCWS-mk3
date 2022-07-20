@@ -36,7 +36,7 @@ void t_motor_memory(void const *argument)
 	motor.mode_state.movementMode = MOVE_MODE_MEMORY;
 
 	motor.pan_command.power_enable = motor.tilt_command.power_enable = 1;
-	hal_motor_update_motor_state(&motor, 1);
+//	hal_motor_update_motor_state(&motor, 1);
 
 	/* Infinite loop */
 	for ( ;; ) {

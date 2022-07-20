@@ -19,7 +19,7 @@
 
 #	define DEBUG_MANAGER			0
 #	define DEBUG_BUS				0
-#	define DEBUG_MOTOR				0
+#	define DEBUG_MOTOR				1
 #	define DEBUG_WEAPON				0
 #	define DEBUG_IMU				0
 #endif	//if DEBUG_ENABLE==1

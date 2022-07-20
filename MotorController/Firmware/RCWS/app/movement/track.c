@@ -21,10 +21,14 @@ static const uint32_t TRACK_UPDATE_TIMEOUT = MOTOR_UPDATE_TIMEOUT;
 void t_motor_track(void const *argument)
 {
 	/* USER CODE BEGIN t_motor_track */
-	uint32_t _track_timer = 0;
+	uint32_t _track_motor_timer = 0;
 	uint32_t _cmd_recv_timestamp = HAL_GetTick();
 	uint32_t _debug_send_timer = 0;
 	uint16_t _debug_motor_command_counter = 0;
+	uint8_t g_track_cam_state = 0;
+	int16_t g_track_dx = 0;
+	int16_t g_track_dy = 0;
+	uint32_t _track_control_timer = 0;
 
 	LOG("t_track created!\r\n");
 
@@ -75,15 +79,16 @@ void t_motor_track(void const *argument)
 					osThreadTerminate(NULL);
 					break;
 				}
-				_cmd_recv_timestamp = HAL_GetTick();
 				break;
 			case Motor_Ext_Sender_Value_id:
-//				trk_state = *(uint8_t*) &pRMail->param.track.trk_state;
+				g_track_cam_state = *(uint8_t*) &pRMail->param.track.cam_state;
+				g_track_dx = pRMail->param.track.trk_x;
+				g_track_dy = pRMail->param.track.trk_y;
 
-				Kontrol_CalcQDot(*(uint8_t*) &pRMail->param.track.trk_state, motor.pan_state.pos, motor.tilt_state.pos,
-						motor.pan_state.speed, motor.pan_state.speed, pRMail->param.track.trk_x, pRMail->param.track.trk_y,
-						&wMotor[0], &wMotor[1]);
+				LOG("trk= %02X,%d,%d\r\n", *(uint8_t* ) &pRMail->param.track.cam_state, pRMail->param.track.trk_x,
+						pRMail->param.track.trk_y);
 
+				_cmd_recv_timestamp = HAL_GetTick();
 				break;
 			case Motor_Ext_Sender_Offset_id:
 				break;
@@ -95,14 +100,23 @@ void t_motor_track(void const *argument)
 			osMailFree(mtr_get_mail(Mail_Motor_Ext_id), pRMail);
 		}
 
-		if (_cmd_recv_timestamp > 0 && (HAL_GetTick() >= _cmd_recv_timestamp + BUS_MAX_TIMEOUT)) {
-			motor.pan_command.power_enable = motor.tilt_command.power_enable = 0;
-			motor.pan_command.spd_trk_in_c = motor.tilt_command.spd_trk_in_c = 0;
-			hal_motor_update_motor_state(&motor, 1);
+		if ((HAL_GetTick() >= _cmd_recv_timestamp + BUS_MAX_TIMEOUT)) {
+			g_track_dx = g_track_dy = 0;
+			Kontrol_init();
 		}
 
-		if (HAL_GetTick() >= _track_timer) {
-			_track_timer = HAL_GetTick() + TRACK_UPDATE_TIMEOUT;
+		if (HAL_GetTick() >= _track_control_timer) {
+			_track_control_timer = HAL_GetTick() + 100;
+
+			Kontrol_CalcQDot(g_track_cam_state, motor.pan_state.pos, motor.tilt_state.pos, motor.pan_state.speed,
+					motor.tilt_state.speed, g_track_dx, g_track_dy, &wMotor[0], &wMotor[1]);
+
+			motor.pan_command.spd_trk_in_c = RWS_MOTOR_PAN_DEG_TO_C(wMotor[0]);
+			motor.tilt_command.spd_trk_in_c = RWS_MOTOR_TILT_DEG_TO_C(wMotor[1]);
+		}
+
+		if (HAL_GetTick() >= _track_motor_timer) {
+			_track_motor_timer = HAL_GetTick() + TRACK_UPDATE_TIMEOUT;
 
 			hal_motor_update_motor_state(&motor, 0);
 

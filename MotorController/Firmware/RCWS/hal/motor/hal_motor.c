@@ -36,7 +36,7 @@ typedef struct
 } Motor_control_t;
 
 Motor_control_t mc;
-const uint32_t DELAY_BETWEEN_NODE_in_ms = 1;
+const uint32_t DELAY_BETWEEN_NODE_in_ms = 2;
 
 /* init motor */
 HAL_StatusTypeDef hal_motor_init(const uint8_t enable)

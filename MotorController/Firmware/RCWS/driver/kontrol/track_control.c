@@ -9,6 +9,7 @@
 #include <stdlib.h>
 
 #include "track_control.h"
+#include "rws_command_state.h"
 
 typedef struct
 {
@@ -24,9 +25,12 @@ typedef struct
 
 Konstanta_PID_t kPID[3];
 
-const Konstanta_PID_t kPID_0 = { 0, 0.65, 0.5, 0.05, 1.2, 0.5, 0.8, 0 };
-const Konstanta_PID_t kPID_1 = { 1, 0.1, 0.07, 1.0, 0.8, 4, 0.3, 0 };
-const Konstanta_PID_t kPID_2 = { 2, 0.05, 0.03, 0.0, 0.0, 0.0, 0.0, 2 };
+//const Konstanta_PID_t kPID_0 = { 0, 0.65, 0.5, 0.05, 1.2, 0.5, 0.8, 0 };
+//const Konstanta_PID_t kPID_1 = { 1, 0.1, 0.07, 1.0, 0.8, 4, 0.3, 0 };
+//const Konstanta_PID_t kPID_2 = { 2, 0.05, 0.03, 0.0, 0.0, 0.0, 0.0, 2 };
+const Konstanta_PID_t kPID_0 = { 0, 0.65, 0.86016, 0.05, 2.064384, 0.5, 1.376256, 0 };
+const Konstanta_PID_t kPID_1 = { 1, 0.1, 0.1204224, 1.0, 1.376256, 4, 0.516096, 0 };
+const Konstanta_PID_t kPID_2 = { 2, 0.05, 0.0516096, 0.0, 0.0, 0.0, 0.0, 2 };
 
 float q_acc0, q_acc1;
 float theta1, theta2;
@@ -67,7 +71,7 @@ void Kontrol_Konstanta_init()
 	kPID[2] = kPID_2;
 }
 
-void Kontrol_CalcQDot(int zoomLevel, float qaz, float qev, float qdaz, float qdev, int dx, int dy, float *qd_sp_az,
+void Kontrol_CalcQDot(uint8_t cam_state, float qaz, float qev, float qdaz, float qdev, int dx, int dy, float *qd_sp_az,
 		float *qd_sp_ev)
 {
 	theta1 = toRad(qaz);
@@ -75,6 +79,13 @@ void Kontrol_CalcQDot(int zoomLevel, float qaz, float qev, float qdaz, float qde
 	theta1_d = toRad(qdaz);
 	theta2_d = toRad(qdev);
 
+	Optronik_camera_state_t cs;
+	*(uint8_t*) &cs = cam_state;
+
+	uint8_t zoomLevel = 0;
+	if (cs.cameraActive == CAM_SELECT_DAY) {
+		zoomLevel = cs.zoomLevel;
+	}
 	// Gain Schedule
 	if (zoomLevel < 0)
 		zoomLevel = 0;
@@ -103,7 +114,8 @@ void Kontrol_CalcQDot(int zoomLevel, float qaz, float qev, float qdaz, float qde
 	q_acc0 += dx;
 	q_acc1 += dy;
 	q_acc0 = wrapVal(q_acc0, 10000);
-	q_acc1 = wrapVal(q_acc1, 10000);
+//	q_acc1 = wrapVal(q_acc1, 10000);
+	q_acc1 = wrapVal(q_acc1, 17203);
 
 	if (abs(dx) <= THRESHOLD_PX) {
 		q_acc0 = 0;
@@ -113,5 +125,6 @@ void Kontrol_CalcQDot(int zoomLevel, float qaz, float qev, float qdaz, float qde
 	}
 
 	*qd_sp_az = wrapVal(toDeg(Torq1), 70.0f);
-	*qd_sp_ev = wrapVal(toDeg(Torq2), 90.0f);
+//	*qd_sp_ev = wrapVal(toDeg(Torq2), 90.0f);
+	*qd_sp_ev = wrapVal(toDeg(Torq2), 45.0f);
 }

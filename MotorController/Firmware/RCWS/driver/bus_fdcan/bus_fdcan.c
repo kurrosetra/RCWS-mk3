@@ -142,7 +142,7 @@ void bus_rx_callback(BUS_Rx_Buffer_t *buffer)
 				mtrExtMail = osMailAlloc(mtr_get_mail(Mail_Motor_Ext_id), 0);
 
 				mtrExtMail->sender_id = Motor_Ext_Sender_Value_id;
-				*(uint8_t*) &mtrExtMail->param.track.trk_state = trk_state;
+				*(uint8_t*) &mtrExtMail->param.track.cam_state = trk_state;
 				mtrExtMail->param.track.trk_x = trk_x;
 				mtrExtMail->param.track.trk_y = trk_y;
 
